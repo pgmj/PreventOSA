@@ -1,0 +1,554 @@
+---
+title: "Stöd"
+#subtitle: "Rasch analysis"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+library(foreign)
+library(readxl)
+library(RISEkbmRasch) # devtools::install_github("pgmj/RISEkbmRasch")
+library(grateful) # devtools::install_github("Pakillo/grateful")
+library(ggrepel)
+library(car)
+library(kableExtra)
+library(readxl)
+library(tidyverse)
+library(eRm)
+library(mirt)
+library(psych)
+library(ggplot2)
+library(psychotree)
+library(matrixStats)
+library(reshape)
+library(knitr)
+library(cowplot)
+library(formattable) 
+library(glue)
+library(hexbin)
+library(skimr)
+
+
+### some commands exist in multiple packages, here we define preferred ones that are frequently used
+select <- dplyr::select
+count <- dplyr::count
+recode <- car::recode
+rename <- dplyr::rename
+
+# file paths will need to have "../" added at the beginning to be able to render document
+
+# get itemlabels
+itemlabels <- read_excel("../data/Itemlabels.xlsx") %>% 
+  filter(str_detect(itemnr, pattern = "st")) %>% 
+  select(!Dimension)
+
+spssDatafil <- "../data/2023-04-26 Prevent OSA-enkat.sav"
+
+# read SurveyMonkey data
+df <- read.spss(spssDatafil, to.data.frame = TRUE) %>% 
+  select(starts_with("q0008"),q0001,q0002,q0003,q0004) %>% 
+  rename(Kön = q0002,
+         Ålder = q0001,
+         Bransch = q0003,
+         Hemarbete = q0004)
+
+
+
+# SPSS format provides itemlabels too, we can save them in a dataframe
+spssLabels <- df %>% attr('variable.labels') %>% as.data.frame()
+
+dif.kön <- df$Kön
+dif.ålder <- df$Ålder
+dif.bransch <- df$Bransch
+dif.hemarbete <- df$Hemarbete
+
+df <- df %>% 
+  select(starts_with("q0008"))
+
+names(df) <- itemlabels$itemnr
+
+```
+
+## Items
+
+```{r}
+itemlabels %>% 
+  kbl_rise(width = 60)
+```
+
+
+## Bakgrundsdata
+
+::: panel-tabset
+### Kön
+```{r}
+RIdemographics(dif.kön,"Kön")
+```
+
+### Ålder
+```{r}
+RIdemographics(dif.ålder,"Ålder") # kanske även fixa en figur?
+```
+
+### Bransch
+```{r}
+RIdemographics(dif.bransch,"Bransch")
+```
+
+### Arbete hemifrån
+```{r}
+RIdemographics(dif.hemarbete,"Antal dagar med arbete hemifrån")
+```
+:::
+
+### Svarsbortfall items
+
+Vi filtrerar bort respondenter som har färre än två svar på frågorna i delskalan.
+
+```{r}
+# If you want to include participants with missing data, input the minimum number of items responses that a participant should have to be included in the analysis:
+min.responses <- 2
+scale.items <- itemlabels$itemnr
+
+# Select the variables we will work with, and filter out respondents with a lot of missing data
+df.omit.na <- df %>% 
+  filter(length(scale.items)-rowSums(is.na(.[scale.items])) >= min.responses)
+
+RImissing(df.omit.na,"st")
+```
+
+Vi har extremt få saknade svar, och tar därför bort respondenterna som inte har kompletta svar.
+
+```{r}
+df <- read.spss(spssDatafil, to.data.frame = TRUE) %>% 
+  select(starts_with("q0008"),q0001,q0002,q0003,q0004) %>% 
+  rename(Kön = q0002,
+         Ålder = q0001,
+         Bransch = q0003,
+         Hemarbete = q0004) %>% 
+  na.omit()
+
+dif.kön <- df$Kön
+dif.ålder <- df$Ålder
+dif.bransch <- df$Bransch
+dif.hemarbete <- df$Hemarbete
+
+df <- df %>% 
+  select(starts_with("q0008"))
+
+names(df) <- itemlabels$itemnr
+
+df.omit.na <- df
+```
+
+
+### Alla svar för alla frågor
+
+```{r}
+RIallresp(df.omit.na)
+```
+
+```{r}
+# koda om svarskategorier till siffror
+df.omit.na <- df.omit.na %>% 
+  mutate(across(everything(), ~ car::recode(.x,"'Aldrig'=0;
+                                            'Sällan' =1;
+                                            'Ibland'=2;
+                                            'Ganska ofta'=3;
+                                            'Mycket ofta'=4;
+                                            'Alltid'=5",
+                                            as.factor = FALSE)))
+```
+
+
+### Descriptives - all items
+
+::: panel-tabset
+#### Tile plot
+```{r}
+#| fig-height: 5
+RItileplot(df.omit.na)
+```
+#### Stacked bars
+```{r}
+#| fig-height: 5
+RIbarstack(df.omit.na) + ylab("Item")
+```
+#### Barplots
+```{r}
+#| layout-ncol: 2
+RIbarplot(df.omit.na)
+```
+:::
+
+Vi har väldigt få svar i lägsta kategorierna, i synnerhet för item st4. Vi slår därför ihop svarskategori 0 (aldrig) och 1 (sällan) för st4.
+
+```{r}
+#Temporärt slå ihop svarskategorier så att analyserna funkar
+
+# df.omit.na$st1<-recode(df.omit.na$st1,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+# df.omit.na$st2<-recode(df.omit.na$st2,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+# df.omit.na$st3<-recode(df.omit.na$st3,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+df.omit.na$st4 <- recode(df.omit.na$st4,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+# df.omit.na$st5<-recode(df.omit.na$st5,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+# df.omit.na$st6<-recode(df.omit.na$st6,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+# df.omit.na$st4<-recode(df.omit.na$st4,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+```
+
+## Rasch-analys 1
+
+```{r}
+#| column: margin
+#| echo: false
+RIlistItemsMargin(df.omit.na, fontsize = 13)
+```
+
+::: panel-tabset
+### Item fit
+```{r}
+#| cache: true
+RIitemfitPCM2(df.omit.na, samplesize = 250, nsamples = 32, cpu = 8)
+```
+### PCA
+```{r}
+#| tbl-cap: "PCA of Rasch model residuals"
+RIpcmPCA(na.omit(df.omit.na))
+```
+### Residual correlations
+```{r}
+RIresidcorr(df.omit.na, cutoff = 0.2)
+```
+### 1st contrast loadings
+```{r}
+RIloadLoc(df.omit.na)
+```
+### Analysis of response categories
+```{r}
+#| layout-ncol: 2
+RIitemCats(df.omit.na, items = "all")
+```
+### Targeting
+```{r}
+#| fig-height: 5
+# increase fig-height above as needed, if you have many items
+RItargeting(df.omit.na, xlim = c(-5,5))
+```
+### Item hierarchy
+```{r}
+#| fig-height: 5
+RIitemHierarchy(df.omit.na)
+```
+:::
+
+Den initiala analysen indikerar problem med dimensionalitet (PCA eigenvalue > 2 och en tydlig uppdelning i 1st contrast loadings). 
+
+Det finns även residualkorrelationer över rekommenderade tröskelvärden (st2 och st3, st4 och st5, samt st1 och st7). 
+
+Eftersom st4 både sticker ut både tematiskt (fokuserar på det egna beteendet till skillnad från resterande items) samt har en stark residualkorrelation med st5, tas detta item bort från vidare analys.
+
+Flera items har problem med de lägsta svarskategorierna. Vi avvaktar lite med åtgärd.
+
+```{r}
+# create vector with eliminated items
+removed_items <- c("st4")
+
+# select all items except those removed
+df2 <- df.omit.na %>%
+  select(!any_of(removed_items))
+```
+
+## Rasch-analys 2
+
+```{r}
+#| column: margin
+#| echo: false
+RIlistItemsMargin(df2, fontsize = 13)
+```
+
+::: panel-tabset
+### Item fit
+```{r}
+#| cache: true
+RIitemfitPCM2(df2, samplesize = 250, nsamples = 32, cpu = 8)
+```
+### PCA
+```{r}
+#| tbl-cap: "PCA of Rasch model residuals"
+RIpcmPCA(na.omit(df2))
+```
+### Residual correlations
+```{r}
+RIresidcorr(df2, cutoff = 0.2)
+```
+### 1st contrast loadings
+```{r}
+RIloadLoc(df2)
+```
+### Analysis of response categories
+```{r}
+#| layout-ncol: 2
+RIitemCats(df2, items = "all")
+```
+### Targeting
+```{r}
+#| fig-height: 5
+# increase fig-height above as needed, if you have many items
+RItargeting(df2)
+```
+### Item hierarchy
+```{r}
+#| fig-height: 5
+RIitemHierarchy(df2)
+```
+:::
+
+Vi har två kluster av items, ett med items 1, 6 och 7 som handlar om mera praktiskt stöd i arbetet, och ett med items 2, 3 och 5 som handlar om socialt stöd.
+
+Eftersom st3 har något hög residualkorrelation med både st2 och st5 tar vi bort st3 från vidare analys.
+
+Vi slår samman de två lägsta svarskategorierna för st1 eftersom de är oordnade. 
+
+Även st2 har problem, men i mitten av skalan. Vi slår därför samman svarskategori 0+1 och 2+3.
+
+```{r}
+# create vector with eliminated items
+removed_items <- c("st4", "st3")
+
+# select all items except those removed
+df2 <- df2 %>%
+  select(!any_of(removed_items)) %>%
+  mutate(
+    st1 = recode(st1, "1=0;2=1;3=2;4=3;5=4"),
+    st2 = recode(st2, "1=0;2=1;3=1;4=2;5=3")
+  )
+```
+
+## Rasch-analys 3
+
+```{r}
+#| column: margin
+#| echo: false
+RIlistItemsMargin(df2, fontsize = 13)
+```
+
+::: panel-tabset
+### Item fit
+```{r}
+#| cache: true
+RIitemfitPCM2(df2, samplesize = 250, nsamples = 32, cpu = 8)
+```
+### PCA
+```{r}
+#| tbl-cap: "PCA of Rasch model residuals"
+RIpcmPCA(na.omit(df2))
+```
+### Residual correlations
+```{r}
+RIresidcorr(df2, cutoff = 0.2)
+```
+### 1st contrast loadings
+```{r}
+RIloadLoc(df2)
+```
+### Analysis of response categories
+```{r}
+#| layout-ncol: 2
+RIitemCats(df2, items = "all")
+```
+### Targeting
+```{r}
+#| fig-height: 5
+# increase fig-height above as needed, if you have many items
+RItargeting(df2)
+```
+### Item hierarchy
+```{r}
+#| fig-height: 5
+RIitemHierarchy(df2)
+```
+:::
+
+### Targeting
+```{r}
+#| label: fig-std-targ
+#| fig-cap: "Targeting för området Stöd"
+#| fig-height: 5
+# increase fig-height above as needed, if you have many items
+RItargeting(df2)
+```
+
+Analysen visar att st1 har en något låg item fit, men ändå över MSQ 0.6. Det finns också två residualkorrelationer som går strax över gränsvärdet, men ligger mycket nära. Vi gör inga ytterligare åtgärder.
+
+## DIF-analysis
+
+En DIF-analys bör inte inkludera svarskategorier med för få svar. Därför har svarskategorier med färre än 50 svar antingen exkluderas eller slagits ihop med andra svarskategorier (se avsnittet om bakgrundsdata för exakt antal svar per ordinarie kategori). DIF-variablerna omkodades till att innehålla följande kategorier: 
+
+- Kön: man, kvinna
+- Ålder: 30-39, 40-49, 50-59, 60+
+- Bransch: kontorsarbete, ej kontorsarbete
+- Hemarbete: aldrig eller sällan, en dag, minst två dagar
+
+Koden nedan specificerar exakt hur omkodningen gick till.
+
+```{r}
+# Omkodning för kön
+dif.kön <- recode(dif.kön,"'Annat'=NA;'Vill ej uppge'=NA")
+
+# Omkodning för ålder
+dif.ålder <- recode(dif.ålder,"'18-29'=NA")
+
+# Omkodning för bransch
+dif.bransch <- recode(dif.bransch,"'Industri'='Ej kontorsarbete';'Hotell, restaurang, service'='Ej kontorsarbete';'Handel'='Ej kontorsarbete';'Skola, utbildning'='Ej kontorsarbete';'Vård, omsorg'='Ej kontorsarbete';'Byggverksamhet'='Ej kontorsarbete';'Annat'='Ej kontorsarbete'")
+
+#Omkodning för hemarbete
+dif.hemarbete <- recode(dif.hemarbete,"'Fem dagar'='Minst två dagar';'Fyra dagar'='Minst två dagar';'Tre dagar'='Minst två dagar';'Två dagar'='Minst två dagar'")
+```
+
+::: panel-tabset
+### Gender
+
+```{r}
+RIdifTable(df2, dif.kön)
+```
+
+### Age
+
+```{r}
+RIdifTable(df2, dif.ålder)
+```
+
+### Bransch
+
+```{r}
+RIdifTable(df2, dif.bransch)
+```
+
+### Hemarbete
+
+```{r}
+RIdifTable(df2, dif.hemarbete)
+```
+:::
+
+Ingen DIF baserat på kön, ålder, bransch och hemarbete över rekommenderade gränsvärden.
+
+## Reliability
+```{r}
+#| label: fig-std-rel
+#| fig-cap: "Reliabilitet för området Stöd"
+RItif(df2, lo = -5, hi = 5)
+```
+
+Reliabiliteten kommer upp i önskade nivåer på vissa delar av skalan. Vi går vidare och plockar ut item-parametrar och en konverteringstabell.
+
+## Person fit
+```{r}
+RIpfit(df2)
+```
+
+## Item-parametrar
+```{r}
+RIitemparams(df2)
+```
+
+## Transformeringstabell
+```{r}
+RIscoreSE(df2)
+```
+
+### Estimering av mätvärden
+```{r}
+df2$score <- RIestThetas(df2)
+write.csv(df2, "scored.csv")
+summary(df2$score)
+```
+
+```{r}
+#| fig-height: 6
+
+ggplot(
+  data = df2,
+  aes(x = score, y = 0, fill = factor(score))
+  ) +
+  geom_dotplot(color = "white", 
+                dotsize = 1,
+                binwidth = 0.11) +
+   # plot mean value
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 6,
+    shape = 18,
+    color = "black"
+  ) +
+    # errorbar has brackets at the endpoints
+  geom_errorbar(
+    aes(
+      xmin = mean(score) - sd(score),
+      xmax = mean(score) + sd(score),
+      y = 0,
+      width = 0.025
+    ),
+    color = "black"
+  ) +
+  theme_minimal(base_family = "Lato") +
+  theme_rise() +
+  coord_cartesian(xlim = c(-4,4)) +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Mätvärden",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart diamant indikerar medelvärde, strecken runt indikerar en standardavvikelse.",
+    y = "Antal respondenter",
+    x = "Mätvärden"
+  ) +
+  theme(
+    #axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank()
+  )
+```
+
+
+## Rekommenderade items
+
+```{r}
+itemlabels %>% 
+  filter(itemnr %in% names(df2)) %>% 
+  write_csv("finalItems.csv")
+
+itemlabels %>% 
+  filter(!itemnr %in% names(df2)) %>% 
+  write_csv("removedItems.csv")
+
+itemlabels %>% 
+  kbl_rise(width = 50,
+           options = "hover") %>% 
+  row_spec(c(3,4), background = "lightpink") %>% 
+  footnote(general_title = "Notera: ",
+           "Borttagna item markerade med färg.")
+
+```
+
+### Förändringar i svarskategorier
+
+```{r}
+#| eval: false
+st1 = recode(st1, "1=0;2=1;3=2;4=3;5=4")
+st2 = recode(st2, "1=0;2=1;3=1;4=2;5=3")
+```
+
+Test med Stöd delad i två?

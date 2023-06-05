@@ -1,0 +1,5340 @@
+---
+title: "Förslag på visualisering och återkoppling av OSA-enkäten"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format:
+  html:
+    fig-width: 9
+    fig-height: 6
+    fig-dpi: 150
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(ggdist)
+library(ggpp)
+library(foreign)
+library(readxl)
+library(showtext)
+library(stringr)
+library(patchwork)
+library(glue)
+library(ggridges)
+library(scales)
+
+## Loading Google fonts (https://fonts.google.com/)
+font_add_google("Noto Sans", "noto")
+## Flama font with regular and italic font faces
+font_add(family = "flama", 
+         regular = "../fonts/Flama-Font/Flama Regular.otf", 
+         italic = "../fonts/Flama-Font/Flama Italic.otf",
+         bold = "../fonts/Flama-Font/FlamaBlack Regular.otf")
+## Automatically use showtext to render text
+showtext_auto()
+
+### some commands exist in multiple packages, here we define preferred ones that are frequently used
+select <- dplyr::select
+count <- dplyr::count
+recode <- car::recode
+rename <- dplyr::rename
+
+# file paths will need to have "../" added at the beginning to be able to render document
+
+# get itemlabels
+itemlabels <- read_excel("../data/Itemlabels.xlsx") %>%
+  filter(str_detect(itemnr, pattern = "abk|å")) %>%
+  select(!Dimension)
+
+spssDatafil <- "2023-04-05 kl15_27 Prevent OSA-enkat.sav"
+
+# read SurveyMonkey data
+df <- read.spss(spssDatafil, to.data.frame = TRUE) %>%
+  select(starts_with("q0006"), starts_with("q0009"), q0001, q0002, q0003, q0004) %>%
+  rename(
+    Kön = q0002,
+    Ålder = q0001,
+    Bransch = q0003,
+    Hemarbete = q0004
+  ) %>%
+  na.omit()
+
+dif.kön <- df$Kön
+dif.ålder <- df$Ålder
+dif.bransch <- df$Bransch
+dif.hemarbete <- df$Hemarbete
+
+df <- df %>%
+  select(starts_with("q0006"), starts_with("q0009"))
+
+names(df) <- itemlabels$itemnr
+
+# read data for one index. Includes item level data and scored data
+df.scored <- read.csv("../visualisering/arbkrv_recSCORED.csv") %>%
+  select(!X)
+
+# get labels/descriptions for all items in the current domain/index
+itemlabels <- itemlabels %>%
+  filter(itemnr %in% c("abk4", "abk5", "abk6", "å2", "å4", "å5"))
+
+# add index scores to raw data, for later use when we need the actual response categories
+df$score <- df.scored$score
+
+# vector of response categories
+svarskategorier <- c("Aldrig","Sällan","Ibland","Ganska ofta","Mycket ofta","Alltid")
+```
+
+## Prevent tema
+
+Kulörer, typsnitt osv - definierar återkommande layout-inställningar för figurer.
+
+```{r}
+prevent_green <- "#008332"
+prevent_light_green <- "#76A100"
+prevent_dark_blue <- "#003E6E"
+prevent_blue <- "#005F89"
+prevent_light_blue <- "#4398BA"
+prevent_yellow <- "#FBB900"
+prevent_red <- "#BE5014"
+prevent_gray_red <- "#6C5861"
+prevent_light_gray <- "#F0F0F0"
+prevent_gray <- "#d3d3d3"
+prevent_dark_gray <- "#3B3B3B"
+prevent_turquoise <- "#009a9d"
+prevent_green_comp <- "#D9ECE0"
+prevent_light_green_comp <- "#DCE7BF"
+prevent_dark_blue_comp <- "#BFCEDA"
+prevent_blue_comp <- "#BFD7E1"
+prevent_light_blue_comp <- "#D0E5EE"
+prevent_yellow_comp <- "#FEEDBF"
+prevent_red_comp <- "#EFD3C4"
+prevent_green_contrast <- "#006632"
+prevent_blue_contrast <- "#003E6E"
+prevent_yellow_contrast <- "#FBD128"
+prevent_red_contrast <- "#B01200"
+prevent_gray_red_contrast <- "#68534E"
+
+# manual palette creation, 7 colors
+PREVENTpalette1 <- c("#6C5861", "#005F89", "#4398BA", "#76A100", "#008332", "#FBB900", "#FBD128")
+
+# create palette with 12 colors based on Prevent colors above
+PREVENTpalette2 <- colorRampPalette(colors = c("#6C5861", "#005F89", "#4398BA", "#76A100", "#008332", "#FBB900", "#FBD128"))(12)
+# scales::show_col(PREVENTpalette2)
+```
+
+```{r}
+theme_prevent <- function(fontfamily = "flama", axisTitleSize = 13, titlesize = 15,
+                          margins = 12, axisface = "plain", stripsize = 12,
+                          panelDist = 0.6, legendSize = 9, legendTsize = 10,
+                          axisTextSize = 10, ...) {
+  theme(
+    text = element_text(family = fontfamily),
+    axis.title.x = element_text(
+      margin = margin(t = margins),
+      size = axisTitleSize
+    ),
+    axis.title.y = element_text(
+      margin = margin(r = margins),
+      size = axisTitleSize
+    ),
+    plot.title = element_text(
+      #family = "flama",
+      face = "bold",
+      size = titlesize
+    ),
+    axis.title = element_text(
+      face = axisface
+    ),
+    axis.text = element_text(size = axisTextSize),
+    plot.caption = element_text(
+      face = "italic"
+    ),
+    legend.text = element_text(family = fontfamily, size = legendSize),
+    legend.title = element_text(family = fontfamily, size = legendTsize),
+    strip.text = element_text(size = stripsize),
+    panel.spacing = unit(panelDist, "cm", data = NULL),
+    legend.background = element_rect(color = "lightgrey"),
+    ...
+  )
+}
+
+# these rows are for specific geoms, such as geom_text() and geom_text_repel(), to match font family. Add as needed
+#    update_geom_defaults("text", list(family = fontfamily)) +
+#    update_geom_defaults("text_repel", list(family = fontfamily)) +
+#    update_geom_defaults("textpath", list(family = fontfamily)) +
+#    update_geom_defaults("texthline", list(family = fontfamily))
+```
+
+## Gruppnivå
+
+Nedanstående kod skapar underlag för figurerna, med sampelstorlek 7, 20 och 40.
+
+```{r}
+# create vector with possible values, which needs to be connected to the transformation table
+# ordinal -> interval
+# "score" is interval level
+possible <- df.scored %>% # maybe rewrite this to just make the dataframe below
+  distinct(score) %>%
+  arrange(score) %>%
+  pull(score)
+
+# make a dataframe with possible values and a count variable (n) with missing data
+df.possible <- possible %>%
+  as.data.frame(nm = "score") %>%
+  add_column(n = NA)
+
+sampleSmall <- 7
+sampleMed <- 20
+sampleLarge <- 40
+set.seed(1337)
+```
+
+```{r}
+# pick random sample to use for visualization example
+df.test7 <- df.scored %>%
+  slice_sample(n = sampleSmall) %>%
+  add_column(group = "Mättillfälle 1")
+
+# get another sample for examples comparing two measurements
+df.test7b <- df.scored %>%
+  slice_sample(n = sampleSmall) %>%
+  add_column(group = "Mättillfälle 2")
+
+# combine data
+df.compare7 <- rbind(df.test7, df.test7b)
+
+###
+# pick random sample to use for visualization example
+df.test20 <- df.scored %>%
+  slice_sample(n = sampleMed) %>%
+  add_column(group = "Mättillfälle 1")
+
+# get another sample for examples comparing two measurements
+df.test20b <- df.scored %>%
+  slice_sample(n = sampleMed) %>%
+  add_column(group = "Mättillfälle 2")
+
+# combine data
+df.compare20 <- rbind(df.test20, df.test20b)
+
+###
+# pick random sample to use for visualization example
+df.test40 <- df.scored %>%
+  slice_sample(n = sampleLarge) %>%
+  add_column(group = "Mättillfälle 1")
+
+# get another sample for examples comparing two measurements
+df.test40b <- df.scored %>%
+  slice_sample(n = sampleLarge) %>%
+  add_column(group = "Mättillfälle 2")
+
+# combine data
+df.compare40 <- rbind(df.test40, df.test40b)
+
+```
+
+```{r}
+# create a dataframe with frequency counts of estimated scores, to use for size/color
+df.counts7 <- df.test7 %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+# calculate 90% confidence interval for the test sample
+smallSample90ci <- sd(df.test7$score) / (sqrt(length(df.test7$score))) * 1.65
+smallSample90ci2 <- sd(df.test7b$score) / (sqrt(length(df.test7b$score))) * 1.65
+
+#####
+# create a dataframe with frequency counts of estimated scores, to use for size/color
+df.counts20 <- df.test20 %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+# calculate 90% confidence interval for the test sample
+medSample90ci <- sd(df.test20$score) / (sqrt(length(df.test20$score))) * 1.65
+medSample90ci2 <- sd(df.test20b$score) / (sqrt(length(df.test20b$score))) * 1.65
+
+#####
+# create a dataframe with frequency counts of estimated scores, to use for size/color
+df.counts40 <- df.test40 %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+# calculate 90% confidence interval for the test sample
+largeSample90ci <- sd(df.test40$score) / (sqrt(length(df.test40$score))) * 1.65
+largeSample90ci2 <- sd(df.test40b$score) / (sqrt(length(df.test40b$score))) * 1.65
+
+```
+
+```{r}
+# for comparison of 2 measurements
+df.countsComp7 <- df.compare7 %>%
+  group_by(group) %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+# for comparison of 2 measurements
+df.countsComp20 <- df.compare20 %>%
+  group_by(group) %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+# for comparison of 2 measurements
+df.countsComp40 <- df.compare40 %>%
+  group_by(group) %>%
+  count(score) %>%
+  right_join(df.possible, # fill in with all scores possible
+    by = "score"
+  ) %>%
+  arrange(score) %>%
+  select(!n.y) %>%
+  rename(n = n.x) %>% 
+  mutate(N = case_when( # change missing to 1 and multiply other frequencies by 2
+    is.na(n) ~ 1,
+    TRUE ~ n * 2
+  )) %>%
+  mutate(nFactor = factor(n)) # make a categorical variable with counts
+
+```
+
+## Visualisering av ett område/index {#sec-vizScores}
+
+Vi kommer antagligen att vilja ta fram en vy som ger en överblick, där resultat på samtliga områden visas under varandra. Som ett första steg tar vi fram förslag på hur ett enskild index kan visas, och i nästa steg hur vi visualiserar svaren på de frågor/items som ingår i ett index, eller på frågor som inte kan bilda ett index.
+
+### Förslag 1
+
+Detta ser kanske något suboptimalt ut när det bara är ett index (eller en grupp/mätning) som visualiseras.
+
+Tanken är att det ska synas (diskret) vilka möjliga mätvärden som finns, för att ge referenspunkter utan att ha värden på x-axeln. Detta blir mera pedagogiskt kanske om det skulle finnas en indikation på medel/SD för någon referensgrupp.
+
+Färgade prickar indikerar svarsfördelningen, där både storlek och färg påverkas av antalet individer som har samma mätvärde.
+
+"Diamanten" visar medelvärdet (eftersom detta är mätvärden på intervallnivå), och de horisontala strecken visar 90% konfidensintervall. Detta eftersom det ger ett seriöst sätt att göra jämförelser. Om man har två mätningar och deras 90%CI inte överlappar är det en signifikant skillnad.
+
+:::: column-page-inset-left
+::: panel-tabset
+#### 20
+```{r}
+#| fig-height: 4
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot() +
+  # plot possible values as hollow circles
+  geom_point(
+    data = df.counts20,
+    aes(x = score, y = 1),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.counts20), # remove missing data to remove NA from legend
+    aes(x = score, y = 1, size = n * 1.5, color = nFactor),
+    # size = 3,
+    shape = 16
+  ) +
+  ### plot 95% confidence interval around the mean
+  # segment makes a line
+  # geom_segment(data = df.test,
+  #               aes(x = mean(score) - sample90ci,
+  #                   xend = mean(score) + sample90ci,
+  #                   y = 0.95, yend = 0.95),
+  #              color = "darkgrey"
+  #            ) +
+  # errorbar has brackets at the endpoints
+  # geom_errorbar(
+  #   data = df.test,
+  #   aes(
+  #     xmin = mean(score) - sample90ci,
+  #     xmax = mean(score) + sample90ci,
+  #     y = 0.95,
+  #     width = 0.025
+  #   ),
+  #   color = "darkgrey"
+  # ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.test20,
+    aes(x = mean(score), y = 0.95),
+    size = 7,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0.8, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart diamant indikerar medelvärde.\nTomma ringar indikerar möjliga mätvärden.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 7
+```{r}
+#| fig-height: 4
+
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot() +
+  # plot possible values as hollow circles
+  geom_point(
+    data = df.counts7,
+    aes(x = score, y = 1),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.counts7), # remove missing data to remove NA from legend
+    aes(x = score, y = 1, size = n * 1.5, color = nFactor),
+    # size = 3,
+    shape = 16
+  ) +
+  ### plot 95% confidence interval around the mean
+  # segment makes a line
+  # geom_segment(data = df.test,
+  #               aes(x = mean(score) - sample90ci,
+  #                   xend = mean(score) + sample90ci,
+  #                   y = 0.95, yend = 0.95),
+  #              color = "darkgrey"
+  #            ) +
+  # errorbar has brackets at the endpoints
+  # geom_errorbar(
+  #   data = df.test,
+  #   aes(
+  #     xmin = mean(score) - sample90ci,
+  #     xmax = mean(score) + sample90ci,
+  #     y = 0.95,
+  #     width = 0.025
+  #   ),
+  #   color = "darkgrey"
+  # ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.test7,
+    aes(x = mean(score), y = 0.95),
+    size = 7,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0.8, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart diamant indikerar medelvärde.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 40
+```{r}
+#| fig-height: 4
+
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot() +
+  # plot possible values as hollow circles
+  geom_point(
+    data = df.counts40,
+    aes(x = score, y = 1),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.counts40), # remove missing data to remove NA from legend
+    aes(x = score, y = 1, size = n * 1.5, color = nFactor),
+    # size = 3,
+    shape = 16
+  ) +
+  ### plot 95% confidence interval around the mean
+  # segment makes a line
+  # geom_segment(data = df.test,
+  #               aes(x = mean(score) - sample90ci,
+  #                   xend = mean(score) + sample90ci,
+  #                   y = 0.95, yend = 0.95),
+  #              color = "darkgrey"
+  #            ) +
+  # errorbar has brackets at the endpoints
+  # geom_errorbar(
+  #   data = df.test,
+  #   aes(
+  #     xmin = mean(score) - sample90ci,
+  #     xmax = mean(score) + sample90ci,
+  #     y = 0.95,
+  #     width = 0.025
+  #   ),
+  #   color = "darkgrey"
+  # ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.test40,
+    aes(x = mean(score), y = 0.95),
+    size = 7,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0.8, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart diamant indikerar medelvärde.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+:::
+::::
+
+### Förslag 2
+
+Detta ser kanske något suboptimalt ut när det bara är ett index (eller en grupp/mätning) som visualiseras.
+
+En möjlighet med stat_dots är att lägga till ett lager som visar en jämförande mätning med dotplot som går nedåt (spegelvänt runt samma linje), i en annan kulör.
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.test20,
+  aes(x = score, y = 0)
+) +
+  geom_point(
+    data = df.counts20,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 1,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    fill = prevent_light_green,
+    dotsize = 2
+  ) +
+  # plot mean
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(-0.1, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde. Tomma cirklar indikerar möjliga mätvärden.",
+    y = "",
+    x = ""
+  ) +
+    annotate("text", x = 2.7, y = -0.13, label = "Högsta möjliga värde",
+           color = "darkgrey") +
+  geom_curve(x = 3.5, y = -0.14,
+           xend = 4, yend = -0.03,
+           color = "darkgrey",
+           #curvature = -0.4,
+           arrow = arrow()
+           ) +
+  annotate("text", x = -2.3, y = -0.13, label = "Lägsta möjliga värde",
+           color = "darkgrey") +
+  geom_curve(x = -2.8, y = -0.1,
+           xend = -2.27, yend = -0.02, # xend = lägsta värdet i `df.counts20`
+           color = "darkgrey",
+           curvature = -0.4,
+           arrow = arrow()
+           ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 20 med CI
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.test20,
+  aes(x = score, y = 0) # y is arbitrary to just have a baseline when only visualizing one domain/index
+) +
+  # plot possible response values as empty circles
+  geom_point(
+    data = df.counts20,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot distribution of actual response values
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 1,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    fill = prevent_light_green,
+    dotsize = 2
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    aes(
+      xmin = mean(score) - medSample90ci,
+      xmax = mean(score) + medSample90ci,
+      y = 0,
+      width = 0.025
+    ),
+    color = "black"
+  ) +
+  # plot mean
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(-0.1, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt. 
+    Tomma cirklar indikerar möjliga mätvärden.",
+    y = "",
+    x = ""
+  ) +
+  annotate("text", x = 2.7, y = -0.13, label = "Högsta möjliga värde",
+           color = "darkgrey") +
+  geom_curve(x = 3.5, y = -0.14,
+           xend = 4, yend = -0.03,
+           color = "darkgrey",
+           #curvature = -0.4,
+           arrow = arrow()
+           ) +
+  annotate("text", x = -2.3, y = -0.13, label = "Lägsta möjliga värde",
+           color = "darkgrey") +
+  geom_curve(x = -2.8, y = -0.1,
+           xend = -2.27, yend = -0.02, # xend = lägsta värdet i `df.counts20`
+           color = "darkgrey",
+           curvature = -0.4,
+           arrow = arrow()
+           ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 7
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.test7,
+  aes(x = score, y = 0)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  geom_point(
+    data = df.counts7,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 1,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    fill = prevent_light_green,
+    dotsize = 2
+  ) +
+  # errorbar has brackets at the endpoints
+  # geom_errorbar(
+  #   aes(
+  #     xmin = mean(score) - smallSample90ci,
+  #     xmax = mean(score) + smallSample90ci,
+  #     y = 0,
+  #     width = 0.025
+  #   ),
+  #   color = "black"
+  # ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(-0.1, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  # scale_color_viridis_d(
+  #   guide = "none",
+  #   begin = 0.6,
+  #   aesthetics = c("fill", "color"),
+  #   direction = 1
+  # ) +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 40
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.test40,
+  aes(x = score, y = 0)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  geom_point(
+    data = df.counts40,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 1,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    fill = prevent_light_green,
+    dotsize = 2
+  ) +
+  # errorbar has brackets at the endpoints
+  # geom_errorbar(
+  #   aes(
+  #     xmin = mean(score) - smallSample90ci,
+  #     xmax = mean(score) + smallSample90ci,
+  #     y = 0,
+  #     width = 0.025
+  #   ),
+  #   color = "black"
+  # ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(-0.1, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  # scale_color_viridis_d(
+  #   guide = "none",
+  #   begin = 0.6,
+  #   aesthetics = c("fill", "color"),
+  #   direction = 1
+  # ) +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+:::
+::::
+
+### Förslag 3
+
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+```{r}
+#| fig-height: 3
+
+ggplot(
+  df.test20,
+  aes(x = score, y = 0, fill = factor(score))
+) +
+  # plot actual values in group
+    geom_point(
+    data = df.counts20,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot possible values
+  geom_dotplot(color = "white",
+               dotsize = 1,
+               binwidth = 0.2) +
+   # plot mean value
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 6,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    #   ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  ## theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre",
+    #caption = "Svart diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 20 med CI
+```{r}
+#| fig-height: 3
+
+ggplot(
+  df.test20,
+  aes(x = score, y = 0, fill = factor(score))
+) +
+    # plot possible values
+    geom_point(
+    data = df.counts20,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+    # plot actual values in group
+  geom_dotplot(color = "white",
+               dotsize = 1,
+               binwidth = 0.2) +
+   # plot mean value
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 6,
+    shape = 18,
+    color = "black"
+  ) +
+    # errorbar has brackets at the endpoints
+  geom_errorbar(
+    aes(
+      xmin = mean(score) - medSample90ci,
+      xmax = mean(score) + medSample90ci,
+      y = 0,
+      width = 0.025
+    ),
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    #   ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  ## theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 7
+```{r}
+#| fig-height: 3
+
+ggplot(
+  df.test7,
+  aes(x = score, y = 0, fill = factor(score))
+) +
+  # plot actual values in group
+    geom_point(
+    data = df.counts7,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot possible values
+  geom_dotplot(color = "white",
+               dotsize = 1,
+               binwidth = 0.2) +
+   # plot mean value
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 6,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    #   ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  ## theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre",
+    #caption = "Svart diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 40
+```{r}
+#| fig-height: 3
+
+ggplot(
+  df.test40,
+  aes(x = score, y = 0, fill = factor(score))
+) +
+  # plot actual values in group
+    geom_point(
+    data = df.counts40,
+    aes(x = score, y = -0.02, fill = NULL),
+    size = 3,
+    shape = 1,
+    color = "grey",
+    alpha = 0.7
+  ) +
+  # plot possible values
+  geom_dotplot(color = "white",
+               dotsize = 1,
+               binwidth = 0.2) +
+   # plot mean value
+  geom_point(
+    aes(
+      x = mean(score),
+      y = 0
+    ),
+    size = 6,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    #   ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  ## theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre",
+    #caption = "Svart diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+:::
+::::
+
+## Jämförelser - två mätningar samma område
+
+### Jämförelse 1
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+```{r}
+#| fig-height: 4
+#| fig-width: 9
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot(
+  data = df.compare20,
+  aes(group = group)
+) +
+  # plot possible values as hollow circles
+  # geom_point(data = df.countsComp,
+  #            aes(x = score,
+  #                y = group
+  #                ),
+  #            size = 3,
+  #            shape = 1,
+  #            color = "grey",
+  #            alpha = 0.6
+  # ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.countsComp20), # remove missing data to remove NA from legend
+    aes(
+      x = score,
+      y = group,
+      size = n * 1.5,
+      color = nFactor
+    ),
+    shape = 16
+  ) +
+  ## create outlines/edges for points
+  # geom_point(data = na.omit(df.countsComp20), # remove missing data to remove NA from legend
+  #   aes(
+  #     x = score,
+  #     y = group,
+  #     size = n * 1.5,
+  #   ),
+  #   color = "white",
+  #   shape = 1) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - medSample90ci,
+      xmax = mean(score) + medSample90ci,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+    geom_errorbar(
+    data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - medSample90ci2,
+      xmax = mean(score) + medSample90ci2,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  ### graphing properties below
+  coord_cartesian(xlim = c(-3, 4)) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1 jämförelse",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Grå diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 7
+```{r}
+#| fig-height: 4
+#| fig-width: 9
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot(
+  data = df.compare7,
+  aes(group = group)
+) +
+  # plot possible values as hollow circles
+  # geom_point(data = df.countsComp,
+  #            aes(x = score,
+  #                y = group
+  #                ),
+  #            size = 3,
+  #            shape = 1,
+  #            color = "grey",
+  #            alpha = 0.6
+  # ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.countsComp7), # remove missing data to remove NA from legend
+    aes(
+      x = score,
+      y = group,
+      size = n * 1.5,
+      color = nFactor
+    ),
+    shape = 16
+  ) +
+  ## create outlines/edges for points
+  # geom_point(data = na.omit(df.countsComp7), # remove missing data to remove NA from legend
+  #   aes(
+  #     x = score,
+  #     y = group,
+  #     size = n * 1.5,
+  #   ),
+  #   color = "white",
+  #   shape = 1) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - smallSample90ci,
+      xmax = mean(score) + smallSample90ci,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+    geom_errorbar(
+    data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - smallSample90ci2,
+      xmax = mean(score) + smallSample90ci2,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  ### graphing properties below
+  coord_cartesian(xlim = c(-3, 4)) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1 jämförelse",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Grå diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+#### 40
+```{r}
+#| fig-height: 4
+#| fig-width: 9
+# testing a plot of "empty" circles, filled with color gradient based on density/frequency of response
+ggplot(
+  data = df.compare40,
+  aes(group = group)
+) +
+  # plot possible values as hollow circles
+  # geom_point(data = df.countsComp,
+  #            aes(x = score,
+  #                y = group
+  #                ),
+  #            size = 3,
+  #            shape = 1,
+  #            color = "grey",
+  #            alpha = 0.6
+  # ) +
+  # plot actual scores in data sample as filled circles, with gradient based on frequency(?)
+  geom_point(
+    data = na.omit(df.countsComp40), # remove missing data to remove NA from legend
+    aes(
+      x = score,
+      y = group,
+      size = n * 1.5,
+      color = nFactor
+    ),
+    shape = 16
+  ) +
+  ## create outlines/edges for points
+  # geom_point(data = na.omit(df.countsComp40), # remove missing data to remove NA from legend
+  #   aes(
+  #     x = score,
+  #     y = group,
+  #     size = n * 1.5,
+  #   ),
+  #   color = "white",
+  #   shape = 1) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - largeSample90ci,
+      xmax = mean(score) + largeSample90ci,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+    geom_errorbar(
+    data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - largeSample90ci2,
+      xmax = mean(score) + largeSample90ci2,
+      y = group,
+      width = 0.2
+    ),
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  # plot mean
+  geom_point(
+    data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "darkgrey",
+    position = position_nudge(y = -0.25)
+  ) +
+  ### graphing properties below
+  coord_cartesian(xlim = c(-3, 4)) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 1 jämförelse",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Grå diamant indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.title = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+:::
+::::
+
+### Jämförelse 2
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.compare20,
+  aes(x = score, y = group, fill = group)
+) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 0.8,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2
+  ) +
+  # plot mean (point) and confidence interval (error bar) to make it easier to compare over time
+  geom_errorbar(data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - medSample90ci,
+      xmax = mean(score) + medSample90ci,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  geom_point(data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+    geom_errorbar(data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - medSample90ci2,
+      xmax = mean(score) + medSample90ci2,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  geom_point(data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    # ylim = c(0, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual(
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from x axis
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 7
+
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.compare7,
+  aes(x = score, y = group, fill = group)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 0.8,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - smallSample90ci,
+      xmax = mean(score) + smallSample90ci,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+    geom_errorbar(data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - smallSample90ci2,
+      xmax = mean(score) + smallSample90ci2,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    # ylim = c(0, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual(
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 40
+
+```{r}
+#| fig-height: 4
+
+ggplot(
+  df.compare40,
+  aes(x = score, y = group, fill = group)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  stat_dots(
+    side = "top",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    color = "white",
+    alpha = 0.8,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - largeSample90ci,
+      xmax = mean(score) + largeSample90ci,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+    geom_errorbar(data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - largeSample90ci2,
+      xmax = mean(score) + largeSample90ci2,
+      y = group,
+      width = 0.1
+    ),
+    color = "black"
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = group
+    ),
+    size = 5,
+    shape = 18,
+    color = "black"
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    # ylim = c(0, 1.2), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual(
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color"),
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 2",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+:::
+::::
+
+### Jämförelse 3
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 4
+
+nudge <- 0.3
+
+ggplot(
+  df.compare20,
+  aes(x = score, y = 0.5, fill = group)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  stat_dots(
+    data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    side = "top",
+    scale = 0.3,
+    show.legend = T,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  stat_dots(
+    data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    side = "bottom",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - medSample90ci2,
+      xmax = mean(score) + medSample90ci2,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = -nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare20 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = -nudge),
+    alpha = 0.7
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - medSample90ci,
+      xmax = mean(score) + medSample90ci,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare20 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = nudge),
+    alpha = 0.7
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual("Grupp",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre. \nPrickar motsvarar personer.",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(), # remove text from both axes
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 7
+
+```{r}
+#| fig-height: 4
+
+nudge <- 0.3
+
+ggplot(
+  df.compare7,
+  aes(x = score, y = 0.5, fill = group)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  stat_dots(
+    data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    side = "top",
+    scale = 0.3,
+    show.legend = T,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  stat_dots(
+    data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    side = "bottom",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - smallSample90ci2,
+      xmax = mean(score) + smallSample90ci2,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = -nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare7 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = -nudge),
+    alpha = 0.7
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - smallSample90ci,
+      xmax = mean(score) + smallSample90ci,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare7 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = nudge),
+    alpha = 0.7
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual("Grupp",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre. \nPrickar motsvarar personer.",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(), # remove text from both axes
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+#### 40
+
+```{r}
+#| fig-height: 4
+
+nudge <- 0.3
+
+ggplot(
+  df.compare40,
+  aes(x = score, y = 0.5, fill = group)
+) +
+  # stat_slab(
+  #   side = "right", show.legend = F,
+  #   scale = 0.6, # defines the height that a slab can reach
+  #   position = position_dodge(width = .6), # distance between elements for dodging
+  #   aes(fill_ramp = after_stat(level), fill = group),
+  #   .width = c(.50, .75, 1)
+  # ) +
+  stat_dots(
+    data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    side = "top",
+    scale = 0.3,
+    show.legend = T,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  stat_dots(
+    data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    side = "bottom",
+    scale = 0.3,
+    show.legend = F,
+    position = position_dodge(width = .9),
+    alpha = 0.66,
+    # verbose = T,
+    binwidth = 0.1, # this and the one below may need to be calculated from data instead
+    dotsize = 2,
+    color = "white"
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      xmin = mean(score) - largeSample90ci2,
+      xmax = mean(score) + largeSample90ci2,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = -nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare40 %>% filter(group == "Mättillfälle 2"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = -nudge),
+    alpha = 0.7
+  ) +
+  # errorbar has brackets at the endpoints
+  geom_errorbar(
+    data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      xmin = mean(score) - largeSample90ci,
+      xmax = mean(score) + largeSample90ci,
+      y = 0.5,
+      width = 0.025,
+      color = group
+    ),
+    position = position_nudge(y = nudge)
+  ) +
+  # plot mean/median and some sort of distribution (SD/SE?) to make it easier to compare over time
+  geom_point(
+    data = df.compare40 %>% filter(group == "Mättillfälle 1"),
+    aes(
+      x = mean(score),
+      y = 0.5,
+      color = group
+    ),
+    size = 5,
+    shape = 18,
+    position = position_nudge(y = nudge),
+    alpha = 0.7
+  ) +
+  ### graphing properties below
+  coord_cartesian(
+    ylim = c(0, 1), # limits for x and y axis
+    xlim = c(-3, 4)
+  ) +
+  scale_size_continuous(
+    range = c(5, 10), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_color_manual("Grupp",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Förslag 3",
+    subtitle = "Värden längre till höger är bättre. \nPrickar motsvarar personer.",
+    caption = "Svart punkt indikerar medelvärde med 90% konfidensintervall runt.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(), # remove text from both axes
+    axis.title = element_blank(),
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 7))) # make points in legend bigger
+```
+
+:::
+::::
+
+
+## Visualisering av frågor/items {#sec-vizItems}
+
+```{r}
+
+# create random sample dataset
+df.plot7 <- df %>%
+  slice_sample(n = sampleSmall) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+# enable comparisons by adding another random group
+df.plot7b <- df %>%
+  slice_sample(n = sampleSmall) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.plotComp7 <- rbind(df.plot7,df.plot7b)
+
+#####
+
+# create random sample dataset
+df.plot20 <- df %>%
+  slice_sample(n = sampleMed) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+# enable comparisons by adding another random group
+df.plot20b <- df %>%
+  slice_sample(n = sampleMed) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.plotComp20 <- rbind(df.plot20,df.plot20b)
+
+#####
+
+# create random sample dataset
+df.plot40 <- df %>%
+  slice_sample(n = sampleLarge) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+# enable comparisons by adding another random group
+df.plot40b <- df %>%
+  slice_sample(n = sampleLarge) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.plotComp40 <- rbind(df.plot40,df.plot40b)
+
+```
+
+```{r}
+# function to get mode values (typvärden)
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# prepare dataframe to store values
+modeResponses <- itemlabels
+
+df.modes <- df.plot20 %>% 
+  # create numeric responses where 1 = "Aldrig, and 6 = "Alltid".
+  mutate(svarNum = as.integer(fct_rev(svarskategori))) %>% 
+  add_column(id = rep(1:20, each=6)) %>% 
+  select(itemnr,svarNum,id) %>% 
+  pivot_wider(names_from = "itemnr",
+              values_from = "svarNum",
+              id_cols = "id")
+
+modes <- c()
+for (i in modeResponses$itemnr) {
+  mode1 <- Mode(df.modes[[i]])
+  modes <- c(modes,mode1)
+}
+modeResponses$modes <- modes
+
+# get median values (can be .5 when we have an even N)
+medians <- c()
+for (i in modeResponses$itemnr) {
+  med1 <- median(df.modes[[i]])
+  medians <- c(medians,med1)
+}
+
+modeResponses$medians <- medians
+
+# get IQR, interquartile range
+iqrs <- c()
+for (i in modeResponses$itemnr) {
+  iqr1 <- IQR(df.modes[[i]])
+  iqrs <- c(iqrs,iqr1)
+}
+modeResponses$iqrs <- iqrs
+
+# get median values (can be .5 when we have an even N) and upper/lower IQR
+med_hilow <- matrix(nrow = 0, ncol = 3)
+for (i in modeResponses$itemnr) {
+  med_hilow <- rbind(med_hilow,median_hilow(df.modes[[i]], conf.int=.5))
+}
+
+modeResponses <- cbind(modeResponses,med_hilow)
+
+modeResponses <- modeResponses %>% 
+  mutate(modeCats = factor(modes, levels = c(1:6),
+                           labels = svarskategorier)
+         )
+
+```
+
+```{r}
+# prepare dataframe to store values
+modeResponses7 <- itemlabels
+
+df.modes7 <- df.plot7 %>% 
+  # create numeric responses where 1 = "Aldrig, and 6 = "Alltid".
+  mutate(svarNum = as.integer(fct_rev(svarskategori))) %>% 
+  add_column(id = rep(1:7, each=6)) %>% 
+  select(itemnr,svarNum,id) %>% 
+  pivot_wider(names_from = "itemnr",
+              values_from = "svarNum",
+              id_cols = "id")
+
+modes <- c()
+for (i in modeResponses$itemnr) {
+  mode1 <- Mode(df.modes7[[i]])
+  modes <- c(modes,mode1)
+}
+modeResponses7$modes <- modes
+
+# get median values (can be .5 when we have an even N)
+medians <- c()
+for (i in modeResponses$itemnr) {
+  med1 <- median(df.modes7[[i]])
+  medians <- c(medians,med1)
+}
+
+modeResponses7$medians <- medians
+
+# get IQR, interquartile range
+iqrs <- c()
+for (i in modeResponses$itemnr) {
+  iqr1 <- IQR(df.modes7[[i]])
+  iqrs <- c(iqrs,iqr1)
+}
+modeResponses7$iqrs <- iqrs
+
+# get median values (can be .5 when we have an even N) and upper/lower IQR
+med_hilow7 <- matrix(nrow = 0, ncol = 3)
+for (i in modeResponses$itemnr) {
+  med_hilow7 <- rbind(med_hilow7,median_hilow(df.modes7[[i]], conf.int=.5))
+}
+
+modeResponses7 <- cbind(modeResponses7,med_hilow7)
+
+modeResponses7 <- modeResponses7 %>% 
+  mutate(modeCats = factor(modes, levels = c(1:6),
+                           labels = svarskategorier)
+         )
+
+```
+
+```{r}
+# prepare dataframe to store values
+modeResponses40 <- itemlabels
+
+df.modes40 <- df.plot40 %>% 
+  # create numeric responses where 1 = "Aldrig, and 6 = "Alltid".
+  mutate(svarNum = as.integer(fct_rev(svarskategori))) %>% 
+  add_column(id = rep(1:40, each=6)) %>% 
+  select(itemnr,svarNum,id) %>% 
+  pivot_wider(names_from = "itemnr",
+              values_from = "svarNum",
+              id_cols = "id")
+
+modes <- c()
+for (i in modeResponses$itemnr) {
+  mode1 <- Mode(df.modes40[[i]])
+  modes <- c(modes,mode1)
+}
+modeResponses40$modes <- modes
+
+# get median values (can be .5 when we have an even N)
+medians <- c()
+for (i in modeResponses$itemnr) {
+  med1 <- median(df.modes40[[i]])
+  medians <- c(medians,med1)
+}
+
+modeResponses40$medians <- medians
+
+# get IQR, interquartile range
+iqrs <- c()
+for (i in modeResponses$itemnr) {
+  iqr1 <- IQR(df.modes40[[i]])
+  iqrs <- c(iqrs,iqr1)
+}
+modeResponses40$iqrs <- iqrs
+
+# get median values (can be .5 when we have an even N) and upper/lower IQR
+med_hilow40 <- matrix(nrow = 0, ncol = 3)
+for (i in modeResponses$itemnr) {
+  med_hilow40 <- rbind(med_hilow40,median_hilow(df.modes40[[i]], conf.int=.5))
+}
+
+modeResponses40 <- cbind(modeResponses40,med_hilow40)
+
+modeResponses40 <- modeResponses40 %>% 
+  mutate(modeCats = factor(modes, levels = c(1:6),
+                           labels = svarskategorier)
+         )
+
+```
+
+
+### geom_point
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 med text
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 text+blå kulör
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    # size = 3,
+    shape = 16
+  ) +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_brewer(
+  #   #type = "seq",
+  #   #palette = "Greens",
+   guide = "none"
+  ) +
+  #scale_color_manual(values = my.cols) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 blå utan text
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_brewer(
+   guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 7
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot7 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 7 blå
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot7 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16
+  ) +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_brewer(
+   guide = "none"
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 21), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  #scale_color_manual(values = plot40colors) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40 blå
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+# scale_color_brewer() only has 9 colors in its palette, we need more for larger samples
+# Let's calculate the needed number first
+
+numColors <- df.plot40 %>%
+  dplyr::count(item, svarskategori) %>% 
+  distinct(n) %>% 
+  rownames_to_column("categories") %>% 
+  mutate(categories = as.numeric(categories)) %>% 
+  select(categories) %>% 
+  tail(1) %>% 
+  pull()
+
+plot40colors <- colorRampPalette(c("#F7FBFF","#08306B"))(numColors)
+
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16
+  ) +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  # scale_color_brewer(
+  #  guide = "none"
+  # ) +
+  scale_color_manual(values = plot40colors) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+:::
+::::
+
+### Typvärden/medianvärden 20
+
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20 median + bollar
+
+Medianvärdet är det som ligger i mitten när alla värden i gruppen ställs på rad från lågt till högt.
+Vi börjar med att titta på föregående visualisering "i bakgrunden" och lägga över median-värdet.
+
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16,
+    alpha = 0.6
+  ) +
+  geom_point(data = modeResponses,
+             aes(x = medians,
+                 y = item),
+             color = "black",
+             size = 7,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_brewer(
+   guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar + medianvärden",
+    caption = "Medianvärdet kan hamna mellan två svarskategorier när det är ett jämnt antal respondenter.",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 typvärde + bollar
+
+Typvärdet är det vanligast förekommande svaret på en fråga.
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16,
+    alpha = 0.6
+  ) +
+  geom_point(data = modeResponses,
+             aes(x = modes,
+                 y = item),
+             color = "black",
+             size = 7,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_brewer(
+   guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar + typvärden",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 enbart typvärde
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0
+  ) +
+  geom_point(data = modeResponses,
+             aes(x = modes,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Typvärden",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 median + spridning
+
+Vi använder interkvartilt omfång (interquartile range, IQR), vilket är avståndet mellan 25:e och 75:e percentilen. Med mindre sampel är dock detta mindre användbart. Vi tittar på sampelstorlek 20, med "bollformade" figurer i bakgrunden för att visa den faktiska spridningen samtidigt.
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0.05
+  ) +
+  geom_segment(data = modeResponses,
+             aes(
+               y = item, yend = item,
+               x = ymin,
+               xend = ymax
+               ),
+             lineend = "round",
+             linewidth = 2,
+             color = "black",
+             alpha = 0.7
+             ) +
+  geom_point(data = modeResponses,
+             aes(x = medians,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Median och spridning",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 median+spridning utan bollar
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0
+  ) +
+  geom_segment(data = modeResponses,
+             aes(
+               y = item, yend = item,
+               x = ymin,
+               xend = ymax
+               ),
+             lineend = "round",
+             linewidth = 2,
+             color = "black",
+             alpha = 0.7
+             ) +
+  geom_point(data = modeResponses,
+             aes(x = medians,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Median och spridning",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+:::
+::::
+
+### Typ/median 40
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 40 median + bollar
+
+Vi börjar med att titta på föregående visualisering "i bakgrunden" och lägga över median-värdet.
+
+Medianvärdet är det som ligger i mitten när alla värden i gruppen ställs på rad från lågt till högt.
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16,
+    alpha = 0.6
+  ) +
+  geom_point(data = modeResponses40,
+             aes(x = modes,
+                 y = item),
+             color = "black",
+             size = 7,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(values = plot40colors,
+                     guide = "none") +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar + medianvärden",
+    caption = "Medianvärdet kan hamna mellan två svarskategorier när det är ett jämnt antal respondenter.",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40 typvärde + bollar
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16,
+    alpha = 0.6
+  ) +
+  geom_point(data = modeResponses40,
+             aes(x = modes,
+                 y = item),
+             color = "black",
+             size = 7,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(values = plot40colors,
+                     guide = "none") +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar + typvärden",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40 enbart typvärde
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0
+  ) +
+  geom_point(data = modeResponses40,
+             aes(x = modes,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Typvärden",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40 median + spridning
+
+Vi använder interkvartilt omfång (interquartile range, IQR), vilket är avståndet mellan 25:e och 75:e percentilen. Med mindre sampel är dock detta mindre användbart. Vi tittar på sampelstorlek 20, med "bollformade" figurer i bakgrunden för att visa den faktiska spridningen samtidigt.
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0.05
+  ) +
+  geom_segment(data = modeResponses40,
+             aes(
+               y = item, yend = item,
+               x = ymin,
+               xend = ymax
+               ),
+             lineend = "round",
+             linewidth = 2,
+             color = "black",
+             alpha = 0.7
+             ) +
+  geom_point(data = modeResponses40,
+             aes(x = medians,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Median och spridning",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40 median+spridning 
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5),
+    shape = 16,
+    alpha = 0
+  ) +
+  geom_segment(data = modeResponses40,
+             aes(
+               y = item, yend = item,
+               x = ymin,
+               xend = ymax
+               ),
+             lineend = "round",
+             linewidth = 2,
+             color = "black",
+             alpha = 0.7
+             ) +
+  geom_point(data = modeResponses40,
+             aes(x = medians,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Median och spridning",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.modes40 %>% 
+  select(!id) %>% 
+  pivot_longer(everything(), names_to = "itemnr", values_to = "svarNum")
+
+df.plot40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  mutate(svarNum = as.numeric(svarskategori)) %>% 
+  ggplot(aes(x = svarskategori, 
+             y = item)) +
+  geom_point(aes(size = n * 1.5),
+    shape = 16,
+    alpha = 0
+  ) +
+  geom_point(data = modeResponses40,
+             aes(x = medians,
+                 y = item,
+                 color = modeCats),
+             #color = "black",
+             size = 12,
+             shape = 18) +
+  stat_pointinterval(point_interval = median_qi) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_viridis_d(
+   guide = "none",
+   begin = 0.4,
+   end = 0.8
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Median och spridning",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+
+:::
+::::
+
+### Typ/median 7
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 7 median + bollar
+
+Det blir tyvärr inte bra när vi har såpass få deltagare i samplet. Median är något mindre dåligt, men typvärdet fungerar inte med så små sampel. Men även median känns inte rättvisade, vilket framgår i figuren nedan.
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot7 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = nFactor),
+    shape = 16,
+    alpha = 0.6
+  ) +
+  geom_point(data = modeResponses7,
+             aes(x = medians,
+                 y = item),
+             color = "black",
+             size = 7,
+             shape = 18) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_brewer(
+   guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar + medianvärden",
+    caption = "Medianvärdet kan hamna mellan två svarskategorier när det är ett jämnt antal respondenter.",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+:::
+::::
+
+
+### stat_dots
+
+denna borde också kunna användas för pre/post, genom att ha två layers med stat_dots för de olika mättillfällena? Och använda position_nudge för att lägga dem ovan/under y-linjen.
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot20 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = svarskategori, fill = svarskategori
+    )
+  ) +
+  stat_dots() +
+  scale_color_viridis_d(
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none",
+    direction = 1
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  )
+
+```
+
+#### 7
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot7 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = svarskategori, fill = svarskategori
+    )
+  ) +
+  stat_dots() +
+  scale_color_viridis_d(
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none",
+    direction = 1
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  )
+
+```
+
+#### 40
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plot40 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = svarskategori, fill = svarskategori
+    )
+  ) +
+  stat_dots() +
+  scale_color_viridis_d(
+    begin = 0.2,
+    aesthetics = c("fill", "color"),
+    guide = "none",
+    direction = 1
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  )
+
+```
+
+
+:::
+::::
+
+### ridgeline_gradient
+
+```{r}
+#| include: false
+#| eval: false
+
+# df.plotComp %>%
+#   #mutate(svar = as.numeric(svarskategori)) %>%
+#   group_by(item,group) %>% 
+#   count(svarskategori) %>% 
+#   ggplot(
+#     aes(
+#       x = svarskategori, y = item,
+#       height = n, group = group,
+#       fill = svarskategori
+#     )) +
+#   geom_ridgeline_gradient() +
+#   scale_x_discrete() +
+#   scale_fill_viridis_d() +
+#   theme_minimal() +
+#   theme_prevent() +
+#   xlab("") +
+#   ylab("") +
+#   scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30))
+```
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+
+df.plot20 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>%
+  group_by(item) %>% 
+  count(svarskategori) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      height = n, group = item,
+      fill = svarskategori
+    )) +
+  geom_ridgeline_gradient(scale = 8/nrow(df.plot20)) +
+  scale_x_discrete() +
+  scale_fill_viridis_d('Svarskategori', 
+                       direction = 1,
+                       begin = 0.4, 
+                       guide = "none") +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  labs(title = "Ridgeline",
+       subtitle = glue("{nrow(df.plot20)/6} deltagare"),
+       caption = "Siffror indikerar antal svar per svarskategori") + # dela på antalet frågor i indexet
+  geom_text(aes(label = n), color = "orange", 
+            nudge_y = -0.1, nudge_x = 0) +
+  theme()
+
+# ridgeline med en kulör bara
+
+```
+
+#### 7
+
+```{r}
+
+df.plot7 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>%
+  group_by(item) %>% 
+  count(svarskategori) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      height = n, group = item,
+      fill = svarskategori
+    )) +
+  geom_ridgeline_gradient(scale = 8/nrow(df.plot7)) +
+  scale_x_discrete() +
+  scale_fill_viridis_d('Svarskategori', 
+                       direction = 1,
+                       begin = 0.4, 
+                       guide = "none") +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  labs(title = "Ridgeline",
+       subtitle = glue("{nrow(df.plot7)/6} deltagare")) +
+  geom_text(aes(label = n), color = "orange", 
+            nudge_y = -0.1, nudge_x = 0)
+
+```
+
+#### 40
+
+```{r}
+
+df.plot40 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>%
+  group_by(item) %>% 
+  count(svarskategori) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      height = n, group = item,
+      fill = svarskategori
+    )) +
+  geom_ridgeline_gradient(scale = 8/nrow(df.plot40)) +
+  scale_x_discrete() +
+  scale_fill_viridis_d('Svarskategori', 
+                       direction = 1,
+                       begin = 0.4, 
+                       guide = "none") +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  labs(title = "Ridgeline",
+       subtitle = glue("{nrow(df.plot40)/6} deltagare")) +
+  geom_text(aes(label = n), color = "orange", 
+            nudge_y = -0.1, nudge_x = 0)
+
+```
+
+### density
+
+#### 20 enfärgad
+
+```{r}
+#| fig-width: 7
+densityCount20 <- df.plot20 %>%
+  #mutate(svarskategori = fct_rev(svarskategori)) %>%
+  mutate(item = fct_rev(item)) %>% 
+  group_by(item) %>% 
+  count(svarskategori) %>% 
+  mutate(svar = as.numeric(svarskategori))
+
+df.plot20 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar
+        )
+      ) +
+  geom_density(alpha = 0.8, 
+               stat = "count",
+               fill = prevent_light_blue, 
+               color = prevent_blue
+               ) +
+  geom_text(data = densityCount20,
+            aes(y = 0, label = n), color = prevent_dark_blue, alpha = 1, 
+            nudge_y = 0, nudge_x = 0) +
+  coord_cartesian(clip = "off") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(30))
+             ) +
+  scale_x_continuous(labels = svarskategorier,
+                     #limits = c(1:6), 
+                     breaks = c(1:6)
+    ) +
+  scale_y_continuous(position="right", 
+                     minor_breaks = NULL,
+                     label = scales::label_comma(accuracy = 1)) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0,
+                                                 hjust = 1),
+                legend.position = "none"
+                                ) +
+  theme(axis.title.y = element_text(margin = margin(l = 15))) +
+  xlab("") +
+  ylab("Antal svar") +
+  labs(title = "Density count",
+       subtitle = "20 deltagare",
+        caption = "Siffror indikerar antal svar per svarskategori")
+```
+
+
+:::
+::::
+
+### geom_col + facet_wrap
+
+#### 20
+
+```{r}
+#| fig-height: 8
+df.plot20 %>%
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = svarskategori
+    )
+  ) +
+  geom_col() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position="right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL)
+```
+
+#### 7
+
+```{r}
+#| fig-height: 8
+df.plot7 %>%
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = svarskategori
+    )
+  ) +
+  geom_col() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position="right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL)
+```
+
+#### 40
+
+```{r}
+#| fig-height: 8
+df.plot40 %>%
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = svarskategori
+    )
+  ) +
+  geom_col() +
+  scale_color_viridis_d("Antal svar",
+    begin = 0.2,
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position="right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL)
+```
+
+### Kränkning/särbehandling
+
+Denna får en egen visualisering/kulörpalett.
+
+```{r}
+# read data again for negative acts questions, "krbet"
+df.krbet <- read.spss(spssDatafil, to.data.frame = TRUE) %>% 
+  select(starts_with("q0012")) %>% 
+  na.omit()
+# krbet itemlabels
+krbet.itemlabels <- read_excel("../data/Itemlabels.xlsx") %>% 
+  filter(str_detect(itemnr, pattern = "kb")) %>% 
+  select(!Dimension)
+
+names(df.krbet) <- krbet.itemlabels$itemnr
+
+df.plot.krbet20 <- df.krbet %>%
+  slice_sample(n = 20) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+df.plot.krbet20b <- df.krbet %>%
+  slice_sample(n = 20) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.krbetComp <- rbind(df.plot.krbet20,df.plot.krbet20b)
+
+df.plot.krbet7 <- df.krbet %>%
+  slice_sample(n = 7) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+df.plot.krbet40 <- df.krbet %>%
+  slice_sample(n = 40) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+krbet.svarskategorier <- c("Aldrig","Det har hänt","Varje månad","Varje vecka","Dagligen")
+
+```
+
+:::: column-page-inset-left
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot.krbet20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  #mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  # scale_color_viridis_d("Antal svar",
+  #   begin = 0,
+  #   option = "plasma",
+  #   direction = -1
+  # ) +
+  scale_color_manual(values = c("#008332","#FBB900","#BE5014","#B01200","#B01200"),
+                     guide = "none") +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(breaks = krbet.svarskategorier,
+                   limits = krbet.svarskategorier)
+```
+
+#### 7
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+
+df.plot.krbet7 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  #mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  filter(n > 0) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  # scale_color_viridis_d("Antal svar",
+  #   begin = 0,
+  #   option = "plasma",
+  #   direction = -1
+  # ) +
+  scale_color_manual(values = c("#008332","#FBB900","#BE5014","#B01200","#B01200"),
+                     guide = "none",
+                     drop = FALSE) +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(breaks = krbet.svarskategorier,
+                   limits = krbet.svarskategorier)
+```
+
+#### 40
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot.krbet40 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  #mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  # scale_color_viridis_d("Antal svar",
+  #   begin = 0,
+  #   option = "plasma",
+  #   direction = -1
+  # ) +
+  scale_color_manual(values = c("#008332","#FBB900","#BE5014","#B01200","#B01200"),
+                     guide = "none") +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(breaks = krbet.svarskategorier,
+                   limits = krbet.svarskategorier)
+```
+
+#### 20 jämförelse
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+plot.krbetComp <- df.krbetComp %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(nFactor = factor(n))
+# mutate(svarskategori = fct_rev(svarskategori)) %>%
+ggplot() +
+  geom_point(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  geom_point(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.35, y = 0)
+  ) +
+  geom_text(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white",
+    alpha = 0.66,
+    position = position_nudge(x = 0.35, y = 0)
+  ) +
+  ### graphing properties below
+  # coord_cartesian(ylim = c(0.8,1.2), # limits for x and y axis
+  #                xlim = c(-3,4)) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none"
+  ) + # remove legend for size aesthetic
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(
+    values = c("#008332", "#FBB900", "#BE5014", "#B01200", "#B01200"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(
+    breaks = krbet.svarskategorier,
+    limits = krbet.svarskategorier
+  )
+```
+
+:::
+::::
+
+
+## Jämförelse på item-nivå
+
+:::: column-page-inset-left
+
+
+### columns
+
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plotComp20 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+  
+```
+
+#### 7
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plotComp7 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+  
+```
+#### 40
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+df.plotComp40 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top") +  
+  xlab("") +
+  ylab("") +
+  scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+  
+```
+:::
+
+### density count
+
+::: panel-tabset
+#### 20
+
+```{r}
+#| fig-height: 6
+#| fig-width: 6
+
+df.plotComp20 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  scale_x_continuous(limits = svarskategorier, 
+                     breaks = svarskategorier,
+                     labels = svarskategorier
+    ) +
+  scale_y_continuous(position="right", 
+                     minor_breaks = NULL,
+                     label = scales::label_comma(accuracy = 1)) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +
+  xlab("") +
+  ylab("") +
+  scale_x_reverse()
+
+```
+#### 7
+
+```{r}
+#| fig-height: 6
+#| fig-width: 6
+
+df.plotComp7 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  scale_x_continuous(limits = svarskategorier, 
+                     breaks = svarskategorier,
+                     labels = svarskategorier
+    ) +
+  scale_y_continuous(position="right", 
+                     minor_breaks = NULL,
+                     label = scales::label_comma(accuracy = 1)) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +
+  xlab("") +
+  ylab("") +
+  scale_x_reverse()
+
+```
+#### 40
+
+```{r}
+#| fig-height: 6
+#| fig-width: 6
+
+df.plotComp40 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             ) +
+  scale_x_continuous(limits = svarskategorier, 
+                     breaks = svarskategorier,
+                     labels = svarskategorier
+    ) +
+  scale_y_continuous(position="right", 
+                     minor_breaks = NULL,
+                     label = scales::label_comma(accuracy = 1)) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "none") +
+  xlab("") +
+  ylab("") +
+  scale_x_reverse()
+
+```
+:::
+
+### columns + density
+
+
+::: panel-tabset
+
+#### 20
+```{r}
+
+# same but without y axis text
+colComp20 <- df.plotComp20 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual("",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top",
+                axis.text.y = element_blank()) +  
+  xlab("") +
+  ylab("") +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+#colComp20
+```
+```{r}
+
+## densityplot with no labels
+densityPlot20 <- df.plotComp20 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1) +
+  scale_x_continuous(limits = c(1,6), 
+                     breaks = c(1:6)
+                     ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent(stripsize = 9) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "none") +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+    strip.text = element_blank()
+  ) +
+  scale_x_reverse()
+
+#densityPlot
+```
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+p20cols <- colComp20 + 
+  theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p20dens <- densityPlot20 + 
+  theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p20cols + p20dens + plot_layout(widths = c(2.3, 1))
+
+```
+
+#### 7
+```{r}
+
+# same but without y axis text
+colComp7 <- df.plotComp7 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual("",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top",
+                axis.text.y = element_blank()) +  
+  xlab("") +
+  ylab("") +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+#colComp20
+```
+```{r}
+
+## densityplot with no labels
+densityPlot7 <- df.plotComp7 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1) +
+  scale_x_continuous(limits = c(1,6), 
+                     breaks = c(1:6)
+                     ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent(stripsize = 9) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "none") +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+    strip.text = element_blank()
+  ) +
+  scale_x_reverse()
+
+#densityPlot
+```
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+p7cols <- colComp7 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p7dens <- densityPlot7 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p7cols + p7dens + plot_layout(widths = c(2.3, 1))
+
+```
+
+#### 40
+```{r}
+
+# same but without y axis text
+colComp40 <- df.plotComp40 %>%
+  group_by(group) %>% 
+  dplyr::count(item, svarskategori, .drop = F) %>%
+  mutate(Nf = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = n, fill = group
+    )
+  ) +
+  geom_col(position = "dodge") +
+  scale_color_manual("",
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+    scale_y_continuous(position = "right",
+                     label = scales::label_comma(accuracy = 1),
+                     minor_breaks = NULL) +
+    facet_wrap(~ item,
+             dir = "v",
+             ncol = 1,
+             strip.position = "left",
+             labeller = labeller(item = label_wrap_gen(22))
+             #scales = "free"
+             ) +
+  theme_minimal() +
+  theme_prevent(stripsize = 10, 
+                strip.text.y.left = element_text(angle = 0),
+                legend.position = "top",
+                axis.text.y = element_blank()) +  
+  xlab("") +
+  ylab("") +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+#colComp20
+```
+```{r}
+
+## densityplot with no labels
+densityPlot40 <- df.plotComp40 %>%
+  mutate(svar = as.numeric(svarskategori)) %>% 
+  mutate(item = factor(item)) %>% 
+  #mutate(item = fct_rev(item)) %>% 
+  ggplot(
+    aes(
+      x = svar, fill = group, color = group
+    )) +
+  geom_density(alpha = 0.6, stat = "count") +
+  facet_wrap(~ item,
+             dir = "v",
+             ncol = 1) +
+  scale_x_continuous(limits = c(1,6), 
+                     breaks = c(1:6)
+                     ) +
+  scale_y_continuous(minor_breaks = NULL) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent(stripsize = 9) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "none") +
+  theme(
+    axis.text.x = element_blank(), # remove text from both axes
+    axis.text.y = element_blank(),
+    axis.title = element_blank(),
+    strip.text = element_blank()
+  ) +
+  scale_x_reverse()
+
+#densityPlot
+```
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+
+p40cols <- colComp40 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p40dens <- densityPlot40 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p40cols + p40dens + plot_layout(widths = c(2.3, 1))
+
+```
+:::
+
+### stat_dots
+
+::: panel-tabset
+
+#### 20
+
+```{r}
+statDots20 <- df.plotComp20 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = group, fill = group
+    )
+  ) +
+  stat_dots(data = . %>% filter(group == "Mättillfälle 1"),
+            position = position_nudge(y = 0.04),
+            #scale = 0.5
+            #dotsize = 1.6
+            ) +
+    stat_dots(data = . %>% filter(group == "Mättillfälle 2"),
+            position = position_nudge(y = -0.04),
+            #scale = 0.9
+            #dotsize = 2
+            ) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "top")
+
+statDots20
+```
+#### 7
+
+```{r}
+statDots7 <- df.plotComp7 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = group, fill = group
+    )
+  ) +
+  stat_dots(data = . %>% filter(group == "Mättillfälle 1"),
+            position = position_nudge(y = 0.04),
+            #scale = 0.5
+            #dotsize = 1.6
+            ) +
+    stat_dots(data = . %>% filter(group == "Mättillfälle 2"),
+            position = position_nudge(y = -0.04),
+            #scale = 0.9
+            #dotsize = 2
+            ) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "top")
+
+statDots7
+```
+#### 40
+
+```{r}
+statDots40 <- df.plotComp40 %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot(
+    aes(
+      x = svarskategori, y = item,
+      color = group, fill = group
+    )
+  ) +
+  stat_dots(data = . %>% filter(group == "Mättillfälle 1"),
+            position = position_nudge(y = 0.04),
+            #scale = 0.5
+            #dotsize = 1.6
+            ) +
+    stat_dots(data = . %>% filter(group == "Mättillfälle 2"),
+            position = position_nudge(y = -0.04),
+            #scale = 0.9
+            #dotsize = 2
+            ) +
+  scale_color_manual('Grupp',
+    values = c(prevent_light_blue,prevent_yellow),
+    aesthetics = c("fill", "color")
+  ) +
+  theme_minimal(base_family = "noto") +
+  theme_prevent() +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8)) +
+  xlab("") +
+  ylab("") +
+  theme(legend.position = "top")
+
+statDots40
+```
+
+:::
+
+### stat_dots + density
+
+::: panel-tabset
+
+#### 20
+
+```{r}
+
+p1 <- statDots20 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p2 <- densityPlot20 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p1 + p2 + plot_layout(widths = c(2.5, 1))
+
+```
+
+#### 7
+
+```{r}
+
+p1 <- statDots7 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p2 <- densityPlot7 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p1 + p2 + plot_layout(widths = c(2.5, 1))
+
+```
+
+#### 40
+
+```{r}
+
+p1 <- statDots40 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+p2 <- densityPlot40 + theme(plot.margin = unit(c(0,0,0,0), 'cm'))
+# unit(c(top, right, bottom, left), units)
+p1 + p2 + plot_layout(widths = c(2.5, 1))
+
+```
+:::
+
+### ridges
+
+::: panel-tabset
+
+#### 20
+
+```{r}
+#densityRidgePlot <- 
+  
+df.plotComp20 %>%
+  mutate(svar = as.numeric(svarskategori)) %>%
+  mutate(item = fct_rev(item)) %>%
+  ggplot(
+    aes(
+      x = svar, y = item,
+      fill = group
+    )) +
+  geom_density_ridges(alpha = 0.6,
+                      scale = 1.5) +
+  scale_x_continuous('',
+                     labels = svarskategorier,
+                     limits = c(1,6),
+                     breaks = c(1:6)) +
+  scale_fill_cyclical('Grupp',
+    values = c(prevent_light_blue,prevent_yellow)
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30))
+  #scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+
+
+#densityRidgePlot
+```
+
+#### 7
+
+```{r}
+#densityRidgePlot <- 
+  
+df.plotComp7 %>%
+  mutate(svar = as.numeric(svarskategori)) %>%
+  mutate(item = fct_rev(item)) %>%
+  ggplot(
+    aes(
+      x = svar, y = item,
+      fill = group
+    )) +
+  geom_density_ridges(alpha = 0.6,
+                      scale = 1.5) +
+  scale_x_continuous('',
+                     labels = svarskategorier,
+                     limits = c(1,6),
+                     breaks = c(1:6)) +
+  scale_fill_cyclical('Grupp',
+    values = c(prevent_light_blue,prevent_yellow)
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30))
+
+```
+
+#### 40
+
+```{r}
+#densityRidgePlot <- 
+  
+df.plotComp40 %>%
+  mutate(svar = as.numeric(svarskategori)) %>%
+  mutate(item = fct_rev(item)) %>%
+  ggplot(
+    aes(
+      x = svar, y = item,
+      fill = group
+    )) +
+  geom_density_ridges(alpha = 0.6,
+                      scale = 1.5) +
+  scale_x_continuous('',
+                     labels = svarskategorier,
+                     limits = c(1,6),
+                     breaks = c(1:6)) +
+  scale_fill_cyclical('Grupp',
+    values = c(prevent_light_blue,prevent_yellow)
+  ) +
+  theme_minimal() +
+  theme_prevent() +
+  xlab("") +
+  ylab("") +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30))
+
+```
+
+:::
+
+### geom_point
+
+::: panel-tabset
+
+#### 20
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp20 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori))
+
+ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow)
+                     ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 20 grön skala
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp20 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori))
+
+ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp20 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  mutate(svarNum = as.numeric(svarskategori)) %>% 
+  mutate(svarSumma = svarNum * n)
+
+df.groupdiff <- df.pointComp %>% 
+  group_by(group, item) %>% 
+  summarise(groupSum = sum(svarSumma)) %>% 
+  pivot_wider(names_from = "group", values_from = "groupSum") %>% 
+  janitor::clean_names() %>% 
+  mutate(groupDiff = mattillfalle_2 - mattillfalle_1) # positive value = positive development
+  
+  # ggplot() +
+  # geom_col(aes(x = item, y = groupSum, group = group, fill = group),
+  #          position = "dodge")
+library(metR)
+plotPrePost <- ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  # trend symbol
+  geom_arrow(
+    data = df.groupdiff,
+    aes(x = 0.4, y = item, angle = 0 + groupDiff, mag = 5),
+    show.legend = F
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow)
+                     ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 22)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+
+#plotPrePost
+```
+
+#### 20 med density
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+plotPrePost + densityPlot20 + plot_layout(widths = c(2.5, 1))
+
+```
+
+
+#### 20 grön med trend-pil
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp20 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  mutate(svarNum = as.numeric(svarskategori)) %>% 
+  mutate(svarSumma = svarNum * n)
+
+df.groupdiff <- df.pointComp %>% 
+  group_by(group, item) %>% 
+  summarise(groupSum = sum(svarSumma)) %>% 
+  pivot_wider(names_from = "group", values_from = "groupSum") %>% 
+  janitor::clean_names() %>% 
+  mutate(groupDiff = mattillfalle_2 - mattillfalle_1) # positive value = positive development
+  
+  # ggplot() +
+  # geom_col(aes(x = item, y = groupSum, group = group, fill = group),
+  #          position = "dodge")
+library(metR)
+ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  # trend symbol
+  geom_arrow(
+    data = df.groupdiff,
+    aes(x = 0.4, y = item, angle = 0 + groupDiff, mag = 5),
+    show.legend = F
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none"
+  ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 7
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp7 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori))
+
+ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow)
+                     ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+#### 40
+
+```{r}
+#| fig-height: 7
+#| fig-width: 10
+
+df.pointComp <- df.plotComp40 %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(item = fct_rev(item)) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori))
+
+ggplot() +
+  # layer for previous measurement
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  geom_point(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = group),
+    # size = 3,
+    shape = 16
+  ) +
+  # create outline for each point
+  #     geom_point(data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+  #   aes(x = svarskategori, y = item, size = n * 1.5),
+  #   color = "lightgrey",
+  #   # size = 3,
+  #   shape = 1
+  # ) +
+  # text layer for showing number of responses in each category
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "white"
+  ) +
+  scale_size_continuous(
+    range = c(7, 20), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) +
+  geom_text(
+    data = df.pointComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, label = n),
+    color = "grey",
+    position = position_nudge(x = 0.3, y = 0)
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "top") +
+  scale_color_manual('',
+    values = c(prevent_light_blue,prevent_yellow)
+                     ) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+
+:::
+::::
