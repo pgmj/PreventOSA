@@ -4,7 +4,7 @@ project:
 book:
   title: "Prevents OSA-enkät"
   subtitle: "Organisatorisk och social arbetsmiljö - psykometrisk analys & visualisering"
-  repo-url: "https://github.com/pgmj/sthlmsenk"
+  repo-url: "https://github.com/pgmj/PreventOSA"
   sidebar:
     style: floating
     search: true
