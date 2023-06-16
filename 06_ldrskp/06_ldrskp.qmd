@@ -2,9 +2,7 @@
 title: "Ledarskap"
 title-block-banner: "#009ca6"
 title-block-banner-color: "#FFFFFF"
-format: 
-  html:
-    css: ../stylesF.css
+format: html
 execute:
   echo: true
   warning: false
