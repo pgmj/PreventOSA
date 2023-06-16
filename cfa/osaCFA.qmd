@@ -3,16 +3,8 @@ title: "Konfirmatorisk faktoranalys"
 subtitle: "CFA"
 title-block-banner: "#009ca6"
 title-block-banner-color: "#FFFFFF"
-format:
-  html:
-    toc: true
-    toc-depth: 3
-    embed-resources: true
-    standalone: true
-    page-layout: full
-    code-fold: true
-    number-sections: true
-    layout-align: left
+format: html
+always-allow-html: true
 execute:
   echo: true
   warning: false
