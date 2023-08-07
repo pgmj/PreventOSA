@@ -19,6 +19,8 @@ book:
       affiliation-url: 'https://www.ri.se/kbm'
   date: 2023-06-05
   date-format: iso
+  doi: '10.5281/zenodo.8220620'
+
   chapters:
   - index.qmd
   - sammanfattning.qmd
