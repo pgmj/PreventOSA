@@ -1,0 +1,883 @@
+---
+title: "Prevents föredragna visualiseringar"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format:
+  html:
+    fig-width: 9
+    fig-height: 6
+    fig-dpi: 150
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setting up
+
+First let's load the necessary libraries. Some additional libraries will be loaded as we go along.
+
+```{r}
+library(tidyverse)
+library(ggdist)
+library(ggpp)
+library(foreign)
+library(readxl)
+library(showtext)
+library(stringr)
+library(patchwork)
+library(glue)
+library(ggridges)
+library(scales)
+
+### some commands exist in multiple packages, here we define preferred ones that are frequently used
+select <- dplyr::select
+count <- dplyr::count
+recode <- car::recode
+rename <- dplyr::rename
+```
+
+### Theming
+
+Then our fonts, colors, and the ggplot theme.
+
+```{r}
+## Loading Google fonts (https://fonts.google.com/)
+font_add_google("Noto Sans", "noto")
+## Flama font with regular and italic font faces
+font_add(family = "flama", 
+         regular = "fonts/Flama-Font/Flama Regular.otf", 
+         italic = "fonts/Flama-Font/Flama Italic.otf",
+         bold = "fonts/Flama-Font/FlamaBlack Regular.otf")
+## Automatically use showtext to render text
+showtext_auto()
+
+prevent_green <- "#008332"
+prevent_light_green <- "#76A100"
+prevent_dark_blue <- "#003E6E"
+prevent_blue <- "#005F89"
+prevent_light_blue <- "#4398BA"
+prevent_yellow <- "#FBB900"
+prevent_red <- "#BE5014"
+prevent_gray_red <- "#6C5861"
+prevent_light_gray <- "#F0F0F0"
+prevent_gray <- "#d3d3d3"
+prevent_dark_gray <- "#3B3B3B"
+prevent_turquoise <- "#009a9d"
+prevent_green_comp <- "#D9ECE0"
+prevent_light_green_comp <- "#DCE7BF"
+prevent_dark_blue_comp <- "#BFCEDA"
+prevent_blue_comp <- "#BFD7E1"
+prevent_light_blue_comp <- "#D0E5EE"
+prevent_yellow_comp <- "#FEEDBF"
+prevent_red_comp <- "#EFD3C4"
+prevent_green_contrast <- "#006632"
+prevent_blue_contrast <- "#003E6E"
+prevent_yellow_contrast <- "#FBD128"
+prevent_red_contrast <- "#B01200"
+prevent_gray_red_contrast <- "#68534E"
+
+# manual palette creation, 7 colors
+PREVENTpalette1 <- c("#6C5861", "#005F89", "#4398BA", "#76A100", "#008332", "#FBB900", "#FBD128")
+
+# create palette with 12 colors based on Prevent colors above
+PREVENTpalette2 <- colorRampPalette(colors = c("#6C5861", "#005F89", "#4398BA", "#76A100", "#008332", "#FBB900", "#FBD128"))(12)
+
+theme_prevent <- function(fontfamily = "flama", axisTitleSize = 13, titlesize = 15,
+                          margins = 12, axisface = "plain", stripsize = 12,
+                          panelDist = 0.6, legendSize = 9, legendTsize = 10,
+                          axisTextSize = 10, ...) {
+  theme(
+    text = element_text(family = fontfamily),
+    axis.title.x = element_text(
+      margin = margin(t = margins),
+      size = axisTitleSize
+    ),
+    axis.title.y = element_text(
+      margin = margin(r = margins),
+      size = axisTitleSize
+    ),
+    plot.title = element_text(
+      #family = "flama",
+      face = "bold",
+      size = titlesize
+    ),
+    axis.title = element_text(
+      face = axisface
+    ),
+    axis.text = element_text(size = axisTextSize),
+    plot.caption = element_text(
+      face = "italic"
+    ),
+    legend.text = element_text(family = fontfamily, size = legendSize),
+    legend.title = element_text(family = fontfamily, size = legendTsize),
+    strip.text = element_text(size = stripsize),
+    panel.spacing = unit(panelDist, "cm", data = NULL),
+    legend.background = element_rect(color = "lightgrey"),
+    ...
+  )
+}
+
+# these rows are for specific geoms, such as geom_text() and geom_text_repel(), to match font family. Add as needed
+#    update_geom_defaults("text", list(family = fontfamily)) +
+#    update_geom_defaults("text_repel", list(family = fontfamily)) +
+#    update_geom_defaults("textpath", list(family = fontfamily)) +
+#    update_geom_defaults("texthline", list(family = fontfamily))
+```
+
+### Importing data
+
+Moving on to item labels.
+
+```{r}
+# get itemlabels for our sample domain (arbetsbelastning och krav)
+itemlabels <- read.csv("06_ldrskp/finalItems.csv")
+itemlabels
+```
+
+And loading data. We will use the items from the "Leadership" domain/subscale for the exampel visualizations.
+
+```{r}
+spssDatafile <- "data/2023-04-26 Prevent OSA-enkat.sav"
+
+# read unedited complete SurveyMonkey data file, downloaded in SPSS format
+df <- read.spss(spssDatafile, to.data.frame = TRUE) %>%
+  select(starts_with("q0010")) %>% # include only items from abk and å
+  select(!ends_with("04")) %>% # remove item that did not work adequately in the psychometric analysis
+  na.omit() # remove participants with missing data (to simplify)
+
+names(df) <- itemlabels$itemnr # set matching variable names - df and itemlabels need to have common "itemnr" labels
+
+# show first 5 rows of df
+df %>% 
+  head(5)
+```
+
+## Person scores for each domain
+
+We also need person scores based on their item responses in the domain. There are two ways to get this. The most correct way is to estimate these using a function from the `catR` package, `thetaEst`. Another option is to use a transformation table, where raw responses are simply summarized for each participant, and the sum score is looked up in the table.
+
+We'll first do the estimation, then the transformation table.
+
+### Direct estimation of person scores
+
+For this, we first need to recode the responses into integers, where the lowest response ("Aldrig") is coded as 0, and so on, until "Alltid" = 5.
+
+```{r}
+# vector of response categories
+svarskategorier <- c("Aldrig","Sällan","Ibland","Ganska ofta","Mycket ofta","Alltid")
+
+# recode responses to numbers and save the output in a separate dataframe
+df.scored <- df %>% 
+  mutate(across(everything(), ~ car::recode(.x,"'Aldrig'=0;
+                                            'Sällan' =1;
+                                            'Ibland'=2;
+                                            'Ganska ofta'=3;
+                                            'Mycket ofta'=4;
+                                            'Alltid'=5",
+                                            as.factor = FALSE)))
+```
+
+Scored data means each participant has had their overall score estimated based on their responses on a subscale. The score is estimated based on the psychometric/Rasch analysis made separately for each scale.
+
+We'll borrow a simplified function from the RISEkbmRasch package, without actually loading the package.
+
+```{r}
+
+#library(RISEkbmRasch) # devtools::install_github("pgmj/RISEkbmRasch")
+library(catR)
+estimateScores <- function(dfin, itemParams, model = "PCM", method = "WL") {
+  estTheta <- function(
+      personResponse, itemParameters = itemParams,
+      rmod = model, est = method) {
+    thetaEst(itemParameters, as.numeric(as.vector(personResponse)),
+      model = rmod, method = est
+    )
+  }
+  dfin %>%
+    t() %>%
+    as_tibble() %>%
+    map_dbl(., estTheta)
+}
+
+# we need to use the item parameters from the Rasch analysis previously made from the whole sample. There is one CSV-file per domain/subscale. The object containing item parameters needs to be a matrix.
+itemParamsLeadership <- read.csv("06_ldrskp/itemParameters.csv") %>% 
+  as.matrix()
+
+# then estimate peron scores for this subscale/domain
+df$score <- estimateScores(dfin = df.scored, 
+                           itemParams = itemParamsLeadership)
+
+df$score %>% 
+  head(5)
+```
+
+We've stored the estimated person scores as variable `df$score`.
+
+### Transformation table
+
+This can be used as a simple lookup & replace table, where raw response data is replaced with integers (starting at 0, as shown earlier), and then summed within the items in the domain/subscale. This is the "ordinal sum score" in the table below, which should be replaced with the "Logit score", which is on an interval scale.
+
+```{r}
+library(eRm)
+scoringTable <- function(dfin) {
+  sink(nullfile())
+  ppar <- dfin %>%
+    PCM() %>%
+    person.parameter() %>%
+    print() %>%
+    as.data.frame()
+  sink()
+
+  scoreTable <- ppar %>%
+    dplyr::rename(
+      `Logit score` = "X1.Estimate", `Logit std.error` = "X1.Std.Error",
+      `Ordinal sum score` = "X1.Raw.Score"
+    ) %>%
+    remove_rownames() %>%
+    mutate(across(where(is.numeric), ~ round(.x, 2)))
+  ordinal_to_interval_table <<- scoreTable
+}
+
+scoringTable(df.scored)
+ordinal_to_interval_table
+```
+
+A limitation of this table is that it will only list the values estimated in the sample used. Since our data is skewed it is safer to directly estimate the scores, as shown previously, to avoid issues with missing values in the lookup table. The table above (for the leadership domain) does contain values from ordinal sum score 0 up til the maximum ordinal sum score.
+
+```{r}
+df.scored$score <- df$score
+```
+
+
+## Preparing visualizations
+
+We'll subset a sample of 17 random respondents to use for the visualizations.
+
+```{r}
+set.seed(1523)
+sampleMed <- 17
+# pick random sample to use for visualization example
+df.test20 <- df.scored %>%
+  slice_sample(n = sampleMed) %>%
+  add_column(group = "Mättillfälle 1")
+
+# get another sample for examples comparing two measurements
+df.test20b <- df.scored %>%
+  slice_sample(n = sampleMed) %>%
+  add_column(group = "Mättillfälle 2")
+
+# combine data
+df.compare20 <- rbind(df.test20, df.test20b)
+
+df.compare20 %>% 
+  head(5)
+```
+
+## Visualizing person scores for domains 
+
+First we need to get scores for all domains that can be scored. These are estimated as described above, but will now be loaded from pre-estimated CSV-files.
+
+```{r}
+#| code-fold: true
+df.scores <- read.csv("02_arbkrv/scored.csv") %>%
+  select(score) %>%
+  rename(`Arbetsbelastning och krav` = score) %>%
+  add_column(id = seq_along(1:nrow(.)))
+
+df.scores <- read.csv("03_mpvrk/scored.csv") %>%
+  select(score) %>%
+  rename(`Möjlighet att påverka` = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("04_std/scored.csv") %>%
+  select(score) %>%
+  rename(Stöd = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("05_rec/scored.csv") %>%
+  select(score) %>%
+  rename(Återhämtning = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("06_ldrskp/scored.csv") %>%
+  select(score) %>%
+  rename(Ledarskap = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("09_psyktry/scored.csv") %>%
+  select(score) %>%
+  rename(`Psykologisk trygghet` = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores$id <- NULL
+
+df.scores %>% 
+  head(5)
+```
+
+The dataframe needs to be in long format for creating the figure/plot, and we'll choose a random set of 17 participants for this too.
+
+```{r}
+#| code-fold: true
+df.plot <- df.scores %>% 
+  slice_sample(n = sampleMed) %>% 
+  pivot_longer(everything(),
+               names_to = "Område",
+               values_to = "Indexvärde") %>% 
+  group_by(Område) %>% 
+  summarise(Medelvärde = mean(Indexvärde, na.rm = T))
+
+df.plot
+```
+
+### Multiple domains
+```{r}
+#| code-fold: true
+#| fig-height: 6
+
+ggplot(df.plot) +
+  # plot mean values for each domain
+  geom_point(
+    aes(
+      x = Medelvärde,
+      y = Område
+    ),
+    color = prevent_green,
+    size = 10,
+    shape = 16,
+    alpha = 0.9
+  ) +
+  coord_cartesian(
+    xlim = c(-3, 4), # set x axis limits
+    clip = "off"
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(axisTextSize = 11) +
+  labs(
+    title = "Översikt områden",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Gröna cirklar indikerar medelvärden. Skalan sträcker sig från lägsta till högsta möjliga värde.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from x axis
+    axis.title = element_blank()
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 12)) + # wrap y label text
+  annotate("text",
+    x = 4, y = 0.2,
+    label = "Högsta\nmöjliga\nvärde",
+    color = "darkgrey",
+    size = 3
+  ) +
+  annotate("text",
+    x = -3, y = 0.2,
+    label = "Lägsta\nmöjliga\nvärde",
+    color = "darkgrey",
+    size = 3
+  ) +
+  update_geom_defaults("text", list(family = "flama")) # sets default font for annotate for the rest of the session
+
+```
+
+### Multiple domains comparison
+
+We need a comparison group.
+
+```{r}
+#| code-fold: true
+set.seed(1452)
+df.plot2 <- df.scores %>% 
+  slice_sample(n = sampleMed) %>% 
+  pivot_longer(everything(),
+               names_to = "Område",
+               values_to = "Indexvärde") %>% 
+  group_by(Område) %>% 
+  summarise(Medelvärde = mean(Indexvärde, na.rm = T))
+```
+
+
+```{r}
+#| fig-height: 6
+#| code-fold: true
+
+
+ggplot() +
+  # plot "previous measurement"
+  geom_point(
+    data = df.plot2,
+    aes(
+      x = Medelvärde,
+      y = Område
+    ),
+    color = prevent_green,
+    size = 8,
+    shape = 16,
+    alpha = 0.4
+  ) +
+  # plot mean values for each domain for the "new measurement
+  geom_point(
+    data = df.plot,
+    aes(
+      x = Medelvärde,
+      y = Område
+    ),
+    color = prevent_green,
+    size = 10,
+    shape = 16,
+    alpha = 0.85 # slight transparency in case circles overlap
+  ) +
+  coord_cartesian(
+    xlim = c(-3, 4), # set x axis limits
+    clip = "off" # don't clip the annotate text set at the end of the code chunk
+  ) +
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  labs(
+    title = "Översikt områden",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Gröna cirklar indikerar medelvärden.\nMörka cirklar = senaste mätningen.\nLjusare/mindre cirklar = föregående mätning.",
+    y = "",
+    x = ""
+  ) +
+  theme(
+    axis.text.x = element_blank(), # remove text from x axis
+    axis.title = element_blank()
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 12)) + # wrap y label text
+  annotate("text",
+    x = 4, y = 0.2,
+    label = "Högsta\nmöjliga\nvärde",
+    color = "darkgrey",
+    size = 3
+  ) +
+  annotate("text",
+    x = -3, y = 0.2,
+    label = "Lägsta\nmöjliga\nvärde",
+    color = "darkgrey",
+    size = 3
+  )
+```
+
+### Single domain item responses
+
+Create dataframe with 17 random participants.
+
+```{r}
+#| code-fold: true
+# create random sample dataset
+df.plot20 <- df %>%
+  slice_sample(n = sampleMed) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+# enable comparisons by adding another random group
+df.plot20b <- df %>%
+  slice_sample(n = sampleMed) %>%
+  select(all_of(itemlabels$itemnr), score) %>%
+  pivot_longer(!score) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.plotComp20 <- rbind(df.plot20,df.plot20b)
+
+df.plotComp20 %>% 
+  head(10)
+```
+
+Calculate median responses
+
+```{r}
+#| code-fold: true
+df.medians <- df.plot20 %>% 
+  # create numeric responses where 1 = "Aldrig, and 6 = "Alltid"
+  mutate(svarNum = as.integer(fct_rev(svarskategori))) %>% 
+  add_column(id = rep(1:17, each = 5)) %>% # sample size = 17, and 5 questions in domain
+  select(itemnr,svarNum,id) %>% 
+  pivot_wider(names_from = "itemnr",
+              values_from = "svarNum",
+              id_cols = "id")
+df.medians %>% 
+  head(10)
+```
+
+```{r}
+#| code-fold: true
+# prepare dataframe to store values
+medianResponses <- itemlabels
+# get median values (can be .5 when we have an even N)
+medians <- c()
+for (i in medianResponses$itemnr) {
+  med1 <- median(df.medians[[i]])
+  medians <- c(medians,med1)
+}
+medianResponses$medians <- medians
+medianResponses
+```
+### Median responses one domain
+```{r}
+#| code-fold: true
+#| fig-height: 7
+#| fig-width: 9
+
+ggplot(medianResponses) +
+  geom_point(aes(x = medians,
+                 y = item),
+             color = prevent_green,
+             size = 12) +
+  theme_minimal() +
+  theme_prevent() +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Medianvärde per fråga",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(limits = svarskategorier,
+                   labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+### All responses one domain
+
+```{r}
+#| code-fold: true
+#| fig-height: 7
+#| fig-width: 9
+
+df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori)) %>% 
+  ggplot() +
+  
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  scale_size_continuous(
+    range = c(7, 16), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) + 
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none" # remove legend for color aesthetic
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+### Mixed median and single item full response
+
+```{r}
+#| code-fold: true
+#| fig-height: 7
+#| fig-width: 9
+
+mixPlot <- df.plot20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  mutate(svarskategori = fct_rev(svarskategori))
+
+ggplot(mixPlot %>% filter(item == "Min chef ger mig återkoppling på hur jag utför arbetet.")) +
+  geom_point(data = medianResponses,
+             aes(x = medians,
+                 y = item),
+             color = prevent_green,
+             size = 12,
+             alpha = 0.4) +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  scale_size_continuous(
+    range = c(7, 16), # set minimum and maximum point size
+    guide = "none"
+  ) +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none" # remove legend for color aesthetic
+  ) +
+    ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent(legend.position = "none") +
+  scale_color_viridis_d("",
+    begin = 0.2,
+    end = 0.8,
+    guide = "none" # remove legend for color aesthetic
+  ) +
+  # scale_color_manual(values = PREVENTpalette1) +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  #guides(color = guide_legend(override.aes = list(size = 7))) + # make points in legend bigger
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(labels = ~ stringr::str_wrap(.x, width = 8))
+
+```
+
+### Median comparison
+
+```{r}
+#| code-fold: true
+df.medians <- df.plot20b %>% 
+  # create numeric responses where 1 = "Aldrig, and 6 = "Alltid"
+  mutate(svarNum = as.integer(fct_rev(svarskategori))) %>% 
+  add_column(id = rep(1:17, each = 5)) %>% # sample size = 17, and 5 questions in domain
+  select(itemnr,svarNum,id) %>% 
+  pivot_wider(names_from = "itemnr",
+              values_from = "svarNum",
+              id_cols = "id")
+```
+
+```{r}
+#| code-fold: true
+# prepare dataframe to store values
+medianResponses2 <- itemlabels
+# get median values (can be .5 when we have an even N)
+medians <- c()
+for (i in medianResponses2$itemnr) {
+  med1 <- median(df.medians[[i]])
+  medians <- c(medians,med1)
+}
+medianResponses2$medians <- medians
+
+# medianComp <- rbind(medianResponses,medianResponses2) %>% 
+#   add_column(Group = rep(1:2, each = 5))
+# medianComp
+```
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+#| code-fold: true
+
+ggplot() +
+  geom_point(data = medianResponses,
+             aes(x = medians,
+                 y = item),
+             color = prevent_green,
+             size = 12,
+             alpha = 0.3,
+             position = position_nudge(x = 0.06, y = 0)
+             ) +
+  geom_point(data = medianResponses2, # add new responses
+             aes(x = medians,
+                 y = item),
+             color = prevent_green,
+             size = 12) +
+  theme_minimal() +
+  theme_prevent() +
+  labs(
+    title = "Indexfrågor",
+    subtitle = "Medianvärde per fråga",
+    caption = "Ljusgröna cirklar indikerar föregående mätning.\nÖverlappande cirklar indikerar samma medianvärde",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(limits = svarskategorier,
+                   labels = ~ stringr::str_wrap(.x, width = 8))
+```
+
+### Negative acts
+
+```{r}
+#| code-fold: true
+# read data again for negative acts questions, "krbet"
+df.krbet <- read.spss(spssDatafile, to.data.frame = TRUE) %>% 
+  select(starts_with("q0012")) %>% 
+  mutate(across(starts_with("q0012"), ~ car::recode(.x,"'Dagligen'='Varje vecka'"))) %>% # merge categories
+  na.omit()
+# krbet itemlabels
+krbet.itemlabels <- read_excel("data/Itemlabels.xlsx") %>% 
+  filter(str_detect(itemnr, pattern = "kb")) %>% 
+  select(!Dimension)
+
+names(df.krbet) <- krbet.itemlabels$itemnr
+
+df.plot.krbet20 <- df.krbet %>%
+  slice_sample(n = 20) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 1")
+
+df.plot.krbet20b <- df.krbet %>%
+  slice_sample(n = 20) %>%
+  pivot_longer(everything()) %>% # we need long format for ggplot
+  rename(
+    itemnr = name,
+    svarskategori = value
+  ) %>%
+  left_join(krbet.itemlabels, by = "itemnr") %>%  # get item descriptions as a variable in the df
+  add_column(group = "Mättillfälle 2")
+
+df.krbetComp <- rbind(df.plot.krbet20,df.plot.krbet20b)
+
+krbet.svarskategorier <- c("Aldrig","Det har hänt","Varje månad","Varje vecka")
+
+```
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+#| code-fold: true
+
+df.plot.krbet20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) + 
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(values = c("#008332","#FBB900","#BE5014","#B01200","#B01200"),
+                     guide = "none") +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(breaks = krbet.svarskategorier,
+                   limits = krbet.svarskategorier)
+```
+
+### Negativs acts comparison
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+#| code-fold: true
+
+plot.krbetComp <- df.krbetComp %>%
+  dplyr::count(group, item, svarskategori) %>%
+  mutate(nFactor = factor(n))
+
+ggplot() +
+  geom_point(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 2"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    shape = 16
+  ) +
+  geom_point(
+    data = plot.krbetComp %>% filter(group == "Mättillfälle 1"),
+    aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    alpha = 0.3,
+    shape = 16,
+    position = position_nudge(x = 0.15, y = 0)
+  ) +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) + 
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(
+    values = c("#008332", "#FBB900", "#BE5014", "#B01200", "#B01200"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(
+    breaks = krbet.svarskategorier,
+    limits = krbet.svarskategorier
+  )
+```
+
+### Negative acts with numbers
+
+```{r}
+#| fig-height: 7
+#| fig-width: 9
+#| code-fold: true
+
+df.plot.krbet20 %>%
+  dplyr::count(item, svarskategori) %>%
+  mutate(nFactor = factor(n)) %>%
+  ggplot() +
+  geom_point(aes(x = svarskategori, y = item, size = n * 1.5, color = svarskategori),
+    # size = 3,
+    shape = 16
+  ) +
+  geom_text(aes(x = svarskategori, y = item, label = n),
+            color = "white") +
+  scale_size_continuous(
+    range = c(7, 18), # set minimum and maximum point size
+    guide = "none" # remove legend for size aesthetic
+  ) + 
+  ### theming, colors, fonts, etc below
+  theme_minimal() +
+  theme_prevent() +
+  scale_color_manual(values = c("#008332","#FBB900","#BE5014","#B01200","#B01200"),
+                     guide = "none") +
+  labs(
+    title = "Kränkande beteenden",
+    subtitle = "Fördelning av svar",
+    y = "",
+    x = ""
+  ) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 30)) +
+  scale_x_discrete(breaks = krbet.svarskategorier,
+                   limits = krbet.svarskategorier)
+```

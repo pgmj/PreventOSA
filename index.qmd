@@ -1,0 +1,34 @@
+---
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format:
+  html:
+    toc: false
+bibliography: references.bib
+---
+
+## Bakgrund {.unnumbered}
+
+[RISE Research Institutes of Sweden](https://ri.se) har fått i uppdrag att utvärdera och vidareutveckla [Prevent](https://prevent.se)s enkät om organisatorisk och social arbetsmiljö (OSA). Efter ett förarbete kring frågeställningar och svarskategorier skickades en pilotenkät ut med 52 frågor uppdelade på nio olika områden:
+
+-   Arbetets organisering
+-   Arbetsbelastning och krav
+-   Möjlighet att påverka
+-   Socialt stöd
+-   Återhämtning
+-   Ledarskap
+-   Kunskaper och utveckling
+-   Kränkande beteenden 
+-   Psykologisk trygghet
+
+Efter datainsamlingen har en psykometrisk analys genomförts. Den finns dokumenterad i kapitel 3-11 (se menyn till vänster). Första steget var att analysera varje område separat för att se hur frågorna fungerade tillsammans inom respektive område. Se @sec-psykometriskaKriterier för en utförligare beskrivning av vilka psykometriska kriterier som använts som utgångspunkt i analyserna.
+
+Därefter utfördes en explorativ analys genom att kombinera items (frågor i enkäten) från olika områden för att se om det fanns möjlighet att ta fram andra sammansättningar av items. Till grund för detta explorativa arbete låg dels kvalitativa resonemang om vilka items som kunde tänkas mäta samma underliggande fenomen (oberoende den initiala kategoriseringen), samt utfallet från en konfirmatorisk faktoranalys, se @sec-cfaModIndices.
+
+RISE har ocskå tagit fram förslag på hur data från enkäten kan visualiseras på ett sätt som både gör enkätresultaten lättillgängliga och samtidigt är statistiskt korrekta. Visualiseringsförslagen gavs både för indexvärden för de fall där frågorna på ett område möjliggjort beräkning av mätvärden (se @sec-vizScores), och svarsdata för varje fråga inom ett område (se @sec-vizItems).
+
+Allt material utom frågorna om "Kränkande beteenden" har publicerats under den öppna licensen [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/) som innebär att det är fritt att dela, använda och vidareutveckla materialet, även för kommersiella syften, så länge hänvisning ges till rapporten och Prevents OSA-enkät som källa.
+
+Gällande frågorna om "kränkande beteenden" så har de delvis tagits från \*The Short Negative Acts Questionnaire" [@notelaers2019], se <https://www.uib.no/en/rg/bbrg/44045/naq> för mera information om rättigheter och villkor för användning.
+
+## Referenser {.unnumbered}

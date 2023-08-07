@@ -1,0 +1,296 @@
+---
+title: "Konfirmatorisk faktoranalys"
+subtitle: "CFA"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format: html
+always-allow-html: true
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+library(foreign)
+library(readxl)
+library(RISEkbmRasch) # devtools::install_github("pgmj/RISEkbmRasch")
+library(grateful) # devtools::install_github("Pakillo/grateful")
+library(lavaan)
+library(lavaanPlot)
+
+
+### some commands exist in multiple packages, here we define preferred ones that are frequently used
+select <- dplyr::select
+count <- dplyr::count
+recode <- car::recode
+rename <- dplyr::rename
+
+# file paths will need to have "../" added at the beginning to be able to render document
+
+# get itemlabels
+itemlabels <- read_excel("../data/Itemlabels.xlsx") %>% 
+  select(!Dimension)
+
+spssDatafil <- "../data/2023-04-26 Prevent OSA-enkat.sav"
+
+# read SurveyMonkey data
+df <- read.spss(spssDatafil, to.data.frame = TRUE) %>% 
+  select(starts_with("q00", ignore.case = FALSE)) %>% 
+  rename(Kön = q0002,
+         Ålder = q0001,
+         Bransch = q0003,
+         Hemarbete = q0004) %>% 
+  select(!q0014)
+
+
+# SPSS format provides itemlabels too, we can save them in a dataframe
+spssLabels <- df %>% attr('variable.labels') %>% as.data.frame()
+
+dif.kön <- df$Kön
+dif.ålder <- df$Ålder
+dif.bransch <- df$Bransch
+dif.hemarbete <- df$Hemarbete
+
+df <- df %>%
+  select(starts_with("q00"))
+
+names(df) <- itemlabels$itemnr
+
+```
+
+## Modell 1 - alla items
+```{r}
+### specify model
+# AO is skipped for now due to low variation in data
+# AO =~ ao1 + ao2 + ao3 + ao4 + ao5
+# KunskapUtv also skipped
+
+allItems <- "BelastKrav =~ abk1+abk2+abk3+abk4+abk5+abk6
+             MöjlPåverka =~ mp1+ mp2+ mp3+ mp4+ mp5
+             Stöd =~ st1+st2+st3+st4+st5+st6+st7
+             Återhämtning =~ å1+å2+å3+å4+å5
+             Ledarskap =~ ls1+ls2+ls3+ls4+ls5+ls6
+             KränkandeB =~ kb1+kb2+kb3+kb4+kb5+kb6+kb7
+             PsykTrygg =~ pt1+pt2+pt3+pt4+pt5+pt6+pt7"
+
+CFAall <- cfa(
+  model = allItems,
+  data = df,
+  rotation = "oblimin",
+  estimator = "WLSMV",
+  ordered = TRUE
+)
+```
+
+
+### Model fit
+```{r}
+# create table with model fit metrics
+# define fit metrics of interest
+fit_metrics_robust <- c("chisq.scaled", "df", "pvalue.scaled", 
+                         "cfi.scaled", "tli.scaled", "rmsea.scaled", "srmr")
+fitmeasures(CFAall, fit_metrics_robust) %>% 
+  rbind() %>% 
+  as.data.frame() %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  rename(Chi2 = chisq.scaled,
+         p = pvalue.scaled,
+         CFI = cfi.scaled,
+         TLI = tli.scaled,
+         RMSEA = rmsea.scaled,
+         SRMR = srmr) %>% 
+  formattable(.,
+              table.attr = 'class=\"table table-striped\" style="font-size: 14px; font-family: Lato; width: 80%"')
+```
+
+### Kovarians
+
+Samband mellan faktorer, sorterat på störst korrelation.
+```{r}
+CFAout <- summary(CFAall)
+
+CFAout[["pe"]] %>% 
+  filter(op == "~~") %>% 
+  slice(56:83) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  select(!exo) %>% 
+  arrange(desc(est)) %>% 
+  kbl_rise()
+```
+
+::: column-page-left
+### Model plot
+```{r}
+#| fig-height: 12
+lavaanPlot(model = CFAall, 
+           coefs = T, stand = T, covs = T,
+           node_options = list(fontname = "Helvetica"), 
+           edge_options = list(color = "grey"),
+           graph_options = list(rankdir = "LR"))
+```
+:::
+
+### Modification indices {#sec-cfaModIndices}
+
+Ordnade efter storlek, störst först.
+
+```{r}
+#| column: margin
+#| echo: false
+RIlistItemsMargin(df, fontsize = 12)
+```
+
+#### Korsladdningar
+
+Med MI > 100.
+```{r}
+modificationIndices(CFAall,
+                    standardized = T) %>% 
+  as.data.frame(row.names = NULL) %>% 
+  filter(mi > 100,
+         op == "=~") %>% 
+  arrange(desc(mi)) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  kbl_rise(fontsize = 14, width = 75)
+```
+
+#### Residualkorrelationer
+```{r}
+modificationIndices(CFAall,
+                    standardized = T) %>% 
+  as.data.frame(row.names = NULL) %>% 
+  filter(mi > 20,
+         op == "~~") %>% 
+  arrange(desc(mi)) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  kbl_rise(fontsize = 14, width = 75)
+```
+
+## Rasch based model
+
+Items och justerade svarskategorier utifrån Rasch-analyserna.
+
+```{r}
+# recode response categories
+
+df <- df %>% 
+  mutate(abk3 = car::recode(abk3,"1=0;2=0;3=1;4=2;5=3"),
+         abk2 = car::recode(abk2,"2=1;3=2;4=3;5=4"),
+         st1 = recode(st1, "1=0;2=1;3=2;4=3;5=4"),
+         st2 = recode(st2, "1=0;2=1;3=1;4=2;5=3"),
+         across(kb1:kb7, ~ recode(.x,"3=2;4=2"))
+         )
+
+df$mp1<-recode(df$mp1,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+df$mp3<-recode(df$mp3,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+df$mp2<-recode(df$mp2,"1=0;2=1;3=2;4=3;5=4",as.factor=FALSE)
+df$mp5<-recode(df$mp5,"2=1;3=2;4=3;5=4",as.factor=FALSE)
+
+```
+
+
+```{r}
+raschItems <- "BelastKrav =~ abk2+abk3+abk5+abk6
+             MöjlPåverka =~ mp1+mp2+mp3+mp5
+             Stöd =~ st1+st2+st5+st6+st7
+             Återhämtning =~ å1+å3+å4+å5
+             Ledarskap =~ ls1+ls2+ls3+ls5+ls6
+             KränkandeB =~ kb2+kb3+kb4+kb5+kb6+kb7
+             PsykTrygg =~ pt1+pt2+pt3+pt4+pt6"
+
+CFArasch <- cfa(
+  model = raschItems,
+  data = df,
+  rotation = "oblimin",
+  estimator = "WLSMV",
+  ordered = TRUE
+)
+```
+
+### Model fit
+```{r}
+# create table with model fit metrics
+# define fit metrics of interest
+fit_metrics_robust <- c("chisq.scaled", "df", "pvalue.scaled", 
+                         "cfi.scaled", "tli.scaled", "rmsea.scaled", "srmr")
+fitmeasures(CFArasch, fit_metrics_robust) %>% 
+  rbind() %>% 
+  as.data.frame() %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  rename(Chi2 = chisq.scaled,
+         p = pvalue.scaled,
+         CFI = cfi.scaled,
+         TLI = tli.scaled,
+         RMSEA = rmsea.scaled,
+         SRMR = srmr) %>% 
+  formattable(.,
+              table.attr = 'class=\"table table-striped\" style="font-size: 14px; font-family: Lato; width: 80%"')
+```
+
+### Kovarians
+
+Samband mellan faktorer, sorterat på störst korrelation.
+```{r}
+CFAout2 <- summary(CFArasch)
+
+CFAout2[["pe"]] %>% 
+  filter(op == "~~") %>% 
+  slice(41:61) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  select(!exo) %>% 
+  arrange(desc(est)) %>% 
+  kbl_rise()
+```
+
+::: column-page-left
+### Model plot
+```{r}
+#| fig-height: 12
+lavaanPlot(model = CFArasch, 
+           coefs = T, stand = T, covs = T,
+           node_options = list(fontname = "Helvetica"), 
+           edge_options = list(color = "grey"),
+           graph_options = list(rankdir = "LR"))
+```
+:::
+
+### Modification indices
+
+Ordnade efter storlek, störst först.
+
+```{r}
+#| column: margin
+#| echo: false
+RIlistItemsMargin(df, fontsize = 12)
+```
+
+#### Korsladdningar
+
+Med MI > 50.
+```{r}
+modificationIndices(CFArasch,
+                    standardized = T) %>% 
+  as.data.frame(row.names = NULL) %>% 
+  filter(mi > 50,
+         op == "=~") %>% 
+  arrange(desc(mi)) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  kbl_rise(fontsize = 14, width = 75)
+```
+
+#### Residualkorrelationer
+```{r}
+modificationIndices(CFArasch,
+                    standardized = T) %>% 
+  as.data.frame(row.names = NULL) %>% 
+  filter(mi > 20,
+         op == "~~") %>% 
+  arrange(desc(mi)) %>% 
+  mutate(across(where(is.numeric),~ round(.x, 3))) %>%
+  kbl_rise(fontsize = 14, width = 75)
+```
+
+

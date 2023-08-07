@@ -1,0 +1,33 @@
+---
+title: "Programvara som använts"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: false
+editor_options: 
+  chunk_output_type: console
+bibliography: grateful-refs.bib
+---
+
+## Lista på programvaror
+
+```{r}
+
+library(grateful)
+library(formattable)
+
+pkgs <- cite_packages(cite.tidyverse = TRUE, 
+                      output = "table",
+                      bib.file = "grateful-refs.bib",
+                      include.RStudio = TRUE,
+                      out.dir = getwd())
+formattable(pkgs, 
+            table.attr = 'class=\"table table-striped\" style="font-size: 15px; font-family: Lato; width: 80%"')
+
+```
+
+## Referenser

@@ -1,0 +1,574 @@
+---
+title: "Introduktion och sammanfattning av resultat"
+title-block-banner: "#009ca6"
+title-block-banner-color: "#FFFFFF"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: false
+bibliography: references.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(readxl)
+library(RISEkbmRasch) # devtools::install_github("pgmj/RISEkbmRasch")
+
+### some commands exist in multiple packages, here we define preferred ones that are frequently used
+select <- dplyr::select
+count <- dplyr::count
+recode <- car::recode
+rename <- dplyr::rename
+
+itemlabels <- read_excel("data/Itemlabels.xlsx") %>% 
+  rename(Index = Dimension)
+
+final.items <- read.csv("01_arborg/finalItems.csv") %>% 
+  add_column(Index = "Arbetets organisation")
+
+final.items <- read_csv("02_arbkrv/finalItems.csv") %>% 
+  add_column(Index = "Arbetetsbelastning och krav") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("03_mpvrk/finalItems.csv") %>% 
+  add_column(Index = "Möjlighet att påverka") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("04_std/finalItems.csv") %>% 
+  add_column(Index = "Stöd") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("05_rec/finalItems.csv") %>% 
+  add_column(Index = "Återhämtning") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("06_ldrskp/finalItems.csv") %>% 
+  add_column(Index = "Ledarskap") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("07_knskputv/finalItems.csv") %>% 
+  add_column(Index = "Kunskaper och utveckling") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("08_krbet/finalItems.csv") %>% 
+  add_column(Index = "Kränkande beteenden") %>% 
+  bind_rows(final.items,.)
+
+final.items <- read_csv("09_psyktry/finalItems.csv") %>% 
+  add_column(Index = "Psykologisk trygghet") %>% 
+  bind_rows(final.items,.)
+```
+
+## Introduktion {.unnumbered}
+
+Övergripande målsättningar:
+
+1. Genomföra psykometriska analyser för att utvärdera i vilken grad enkätfrågorna i dess nuvarande form kan utgöra tillförlitliga mätningar av de olika OSA-områden som de avser att mäta. Resultaten av analyserna användes sedan för att identifiera den kombination av items som fungerade bäst och kunde ligga till grund för beräkning av mätvärden inom ett område/index. Dessa mätvärden är mycket mera robusta än enskilda frågor, och ett bättre underlag för jämförelser över tid eller mellan grupper.
+
+2. Utforska om nya kombinationer av items från olika områden kunde sättas samman med lika bra eller bättre mätegenskaper. Detta gjordes utifrån både kvalitativa resonemang om vilka items som kunde antas mäta samma underliggande fenomen (oberoende den initiala kategoriseringen) och resultat från en konfirmatorisk faktoranalys  (korsladdningar och residualkorrelationer).
+
+3. Ge förslag på hur data från enkäten kan visualiseras på ett sätt som gör enkätresultaten lättillgängliga och användbara för slutanvändaren. Visualiseringsförslagen gavs både för mätvärden inom ett område (som förutsätter att psykometriska kriterier uppfylls) och för återgivning av svarsfördelningar på enskilda frågor. All visualisering bygger på att resultaten ska presenteras på gruppnivå.
+
+## Svarskategorier
+
+Tre varianter på svarskategorier har använts i enkäten. I förekommande fall har justeringar av svarskategorierna gjorts efter analys, se respektive delskalas fullständiga analys för detaljer.
+
+För området Arbetets organisering användes följande fyra svarsalternativ: 
+
+- Instämmer helt och hållet
+- Instämmer till stor del
+- Instämmer till viss del
+- Instämmer inte alls
+
+Följande fem svarsalternativ användes för området Kränkande beteenden: 
+
+- Aldrig
+- Det har hänt
+- Varje månad
+- Varje vecka
+- Dagligen
+
+För resterande sju områden användes följande sex svarsalternativ:
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+## Psykometriska kriterier {#sec-psykometriskaKriterier}
+
+RISE har tagit fram fem grundläggande kriterier och en rapporteringsmall för vetenskapliga psykometri-artiklar som har varit utgångspunkt för analysarbetet. Artikeln finns fritt tillgänglig som preprint [@johansson] och innehåller både en enklare och mera fördjupad beskrivning av kriterierna.
+
+Nedan finns en förenklad beskrivning av psykometriska kriterier som kommer från RISE rapport till MFoF om uppföljning av föräldraskapsstöd [@preuter2022]:
+
+> När enkäter konstrueras och utvärderas bedöms dess psykometriska egenskaper, ofta kopplade till begreppen reliabilitet och validitet. Förenklat kan man säga att reliabilitet beskriver hur väl något mäts (vilken precision mätverktyget har), medan validitet beskriver hur väl innehållet i frågorna och svarskategorierna fångar det man avser att mäta. Dock råder i allmänhet oklara definitioner av begreppen och kriterier för huruvida dessa mätegenskaper uppfylls eller inte. Det medför att även enkäter som i forskningsartiklar beskrivs som "validerade" eller att de har "god reliabilitet" inte nödvändigtvis uppfyller vad som kan anses vara grundläggande kriterier. En mera omfattande beskrivning av de grundläggande psykometriska kriterierna återfinns i Bilaga 3 (separat dokument). Nedan listas kriterierna. Var och en av dem kräver psykometrisk analys av insamlade data för att bedöma.
+>
+> Lista över grundläggande psykometriska kriterier:
+>
+> -   Svarskategorierna fungerar som avsett
+> -   Frågorna fungerar likadant för olika grupper (kön, ålder, etc)
+> -   Unidimensionalitet (utan för starkt korrelerade residualer)
+> -   Frågornas svårighetsgrad passar målgruppens egenskaper/förmågor
+> -   Reliabilitet/mätosäkerheter över skalans omfång är adekvat, sett till användningsområdet
+> -   Omvandlingstabell till intervallskala
+>
+> Kriterierna ovan är ställda för att säkerställa att det är lämpligt att använda summapoäng från en enkät/skala. Summapoängen bör i sin tur användas tillsammans med en omvandlingstabell till intervallskala innan några statistiska eller matematiska beräkningar görs. Tyvärr är det mycket vanligt att forskningsstudier enbart redovisar Cronbach's alpha som ett mått på reliabilitet och/eller kvalitet på en enkät. Det är dessvärre gravt otillräckligt för att bedöma mätegenskaper hos ett mätverktyg, eftersom Cronbach's alpha inte ger information om något av kriterierna ovan.
+
+## Noteringar om analysprocessen
+
+Inom varje område har samtliga frågor/items lagts in i en analys. Ambitionen har varit att ta fram ett index med så goda mätegenskaper som möjligt, och att eliminera items som varit  problematiska utifrån ovan nämnda psykometriska kriterier. 
+
+Rasch-analyser visade att sex av nio områden av organisatorisk och social arbetsmiljö uppfyllde de psykometriska kriterierna i tillräcklig grad och kan användas för att ta fram indexvärden. De sex områden som fungerade godkänt - efter exkludering av items som inte passade mätmodellen enligt ovan nämnda kriterier - var "Arbetsbelastning och krav", "Möjlighet att påverka", "Stöd", "Återhämtning", "Ledarskap" och "Psykologisk trygghet". *Resterande tre områden visade sig inte fungera lika bra och rekommenderas därför att revideras innan de kan användas för att ta fram indexvärden.* Frågor från samtliga områden kan presenteras i form av svarsfördelning på enskilda frågor.
+
+## Noteringar om sammanfattningen av resultat
+
+I denna sammanfattning presenteras urvalet av items för respektive område som har visat sig bäst uppfylla de tidigare nämnda psykometriska kriterierna (markerade med grönt). *För de sex områden som uppvisade tillräckligt god psykometrisk kvalitet hänvisas också till reliabilitet och "targeting"* (dvs. hur väl frågorna matchar respondenterna), eftersom dessa faktorer är relevanta för användningen av frågorna och eventuella framtida reduktioner av items.
+
+Ett vanligt problem i analyserna har varit residualkorrelationer. Det innebär att par av items är för lika varandra och inte enskilt medför tillräckligt mycket unik information till indexvärdet. I stället finns risk för att indexvärden skulle bli oproportionerligt påverkade om båda items behålls i indexet. I regel tas ett item bort, utifrån beaktande av varje items mätegenskaper.
+
+Detta dokument sammanfattar resultatet av varje indexområdes analysprocess. Analysdokument för respektive indexområde finns tillgängligt i menyn till vänster på denna sida. Den kompletta källkoden som visar hur analyserna gjorts finns tillgänglig [på denna webbsida](https://github.com/pgmj/PreventOSA). Eftersom även [anonyma rådata tillgängliggjorts](https://github.com/pgmj/PreventOSA/tree/main/data) är det möjligt att granska och reproducera våra analyser. All mjukvara som använts för analyserna bygger på öppen källkod och är fritt tillgängliga.
+
+## Arbetets organisering
+
+### Items
+
+```{r}
+arborg.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^ao")) %>% # byt ut abk mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^ao")) %>%# byt ut abk mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^ao")) %>% # byt ut abk mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(arborg.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Instämmer helt och hållet
+- Instämmer till stor del
+- Instämmer till viss del
+- Instämmer inte alls
+
+## Arbetsbelastning och krav
+
+### Items
+
+```{r}
+arbkrv.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^abk")) %>% # byt ut abk mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^abk")) %>%# byt ut abk mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^abk")) %>% # byt ut abk mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(arbkrv.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-arbkrv-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-arbkrv-targ för matchning mellan respondenter och items.
+
+## Möjlighet att påverka
+
+### Items
+
+```{r}
+mpvrk.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^mp")) %>% # byt ut mp mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^mp")) %>%# byt ut mp mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^mp")) %>% # byt ut mp mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(mpvrk.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-mpvrk-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-mpvrk-targ för matchning mellan respondenter och items.
+
+## Socialt stöd
+
+### Items
+
+```{r}
+std.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^st")) %>% # byt ut mp mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^st")) %>%# byt ut mp mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^st")) %>% # byt ut mp mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(std.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-std-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-std-targ för matchning mellan respondenter och items.
+
+## Återhämtning
+
+### Items
+
+```{r}
+rec.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^å")) %>% # byt ut mp mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^å")) %>%# byt ut mp mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^å")) %>% # byt ut mp mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(rec.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-rec-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-rec-targ för matchning mellan respondenter och items.
+
+## Ledarskap
+
+### Items
+
+```{r}
+ldrskp.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^ls")) %>% # byt ut mp mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^ls")) %>%# byt ut mp mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^ls")) %>% # byt ut mp mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(ldrskp.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-ldrskp-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-ldrskp-targ för matchning mellan respondenter och items.
+
+## Kunskap och utveckling
+
+### Items
+
+```{r}
+knskputv.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^ku")) %>% # byt ut abk mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^ku")) %>%# byt ut abk mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^ku")) %>% # byt ut abk mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(knskputv.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+## Kränkande beteenden
+
+### Items
+
+```{r}
+krbet.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^kb")) %>% # byt ut abk mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^kb")) %>%# byt ut abk mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^kb")) %>% # byt ut abk mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(krbet.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Aldrig
+- Det har hänt
+- Varje månad
+- Varje vecka
+- Dagligen
+
+## Psykologisk trygghet
+
+### Items
+
+```{r}
+psyktry.nr <- itemlabels %>%
+  filter(str_detect(itemnr,"^pt")) %>% # byt ut mp mot önskvärd indexförkortning
+  rownames_to_column() %>%
+  filter(itemnr %in% c(final.items %>% 
+           filter(str_detect(itemnr,"^pt")) %>%# byt ut mp mot önskvärd indexförkortning
+           pull(itemnr))
+         )%>%
+  pull(rowname) %>%
+  as.numeric()
+
+itemlabels %>%
+  filter(str_detect(itemnr,"^pt")) %>% # byt ut mp mot önskvärd indexförkortning
+  select(!Index) %>%
+  kbl_rise() %>%
+  row_spec(psyktry.nr, background = "#008332", color = "white") 
+```
+
+### Svarskategorier
+
+- Alltid
+- Mycket ofta
+- Ganska ofta
+- Ibland
+- Sällan
+- Aldrig
+
+### Reliabilitet
+
+Se @fig-psyktry-rel för områdets reliabilitet.
+
+### Targeting
+
+Se @fig-psyktry-targ för matchning mellan respondenter och items.
+
+## Explorativa analyser
+
+För att undersöka om kombinationer av items från olika arbetsmiljöområden förbättrade den psykometriska kvaliteten genomfördes även explorativa analyser. Till att börja med testades en sammanfogning av områdena "Arbetsbelastning och krav" och "Återhämtning". Följande kombinationer av items visade sig fungera tillsammans:
+
+- Jag upplever att andras krav på mig är rimliga. (arbetsbelastning och krav)
+- Jag kan få hjälp om min arbetsbelastning är för hög. (arbetsbelastning och krav)
+- Mitt arbete är fritt från psykiskt påfrestande arbetsuppgifter. (arbetsbelastning och krav)
+- Jag har möjlighet att arbeta i lugnare takt efter arbetsintensiva perioder. (återhämtning)
+- Jag har ork kvar för att göra andra saker efter arbetsdagens slut. (återhämtning)
+- Jag kan lägga tankar på arbetet åt sidan på min lediga tid. (återhämtning)
+
+Dessa items är tillsynes tematiskt lika och skulle kunna passa under begreppet ’Arbetsbelastning’. 
+
+En ytterligare explorativ analys gjordes genom att slå ihop områdena "Psykologisk trygghet", "Stöd" och "Möjlighet att påverka". Följande kombinationer av items visade sig fungera bra tillsammans:
+
+- Jag har tillräckligt med befogenheter för att kunna utföra mina arbetsuppgifter. (möjlighet att påverka)
+- Jag vet vem jag ska vända mig till för att få stöd och hjälp med att utföra arbetet. (stöd)
+- Det finns personer på mitt arbete som jag kan prata förtroligt med. (stöd)
+- Mina kollegor visar uppskattning för mina arbetsinsatser. (stöd)
+- Jag kan begå misstag utan att det hålls emot mig. (psykologisk trygghet)
+- Jag kan öppet diskutera olika typer av svårigheter. (psykologisk trygghet)
+- Jag blir inkluderad även om jag tycker annorlunda. (psykologisk trygghet)
+
+Dessa items skulle potentiellt kunna rymmas inom begreppet ’Psykologisk trygghet’.
+
+## Visualisering
+
+### Fördelning av övergripande mätvärden
+
+Uppdelat per område/index där det varit möjligt att estimera mätvärden.
+
+```{r}
+df.scores <- read.csv("02_arbkrv/scored.csv") %>%
+  select(score) %>%
+  rename(`Arbetsbelastning och krav` = score) %>%
+  add_column(id = seq_along(1:nrow(.)))
+
+df.scores <- read.csv("03_mpvrk/scored.csv") %>%
+  select(score) %>%
+  rename(`Möjlighet att påverka` = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("04_std/scored.csv") %>%
+  select(score) %>%
+  rename(Stöd = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("05_rec/scored.csv") %>%
+  select(score) %>%
+  rename(Återhämtning = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("06_ldrskp/scored.csv") %>%
+  select(score) %>%
+  rename(Ledarskap = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores <- read.csv("09_psyktry/scored.csv") %>%
+  select(score) %>%
+  rename(`Psykologisk trygghet` = score) %>%
+  add_column(id = seq_along(1:nrow(.))) %>%
+  full_join(df.scores, by = "id")
+
+df.scores$id <- NULL
+```
+
+```{r}
+library(skimr)
+skim(df.scores)
+```
+
+```{r}
+# #| fig-height: 6
+library(ggpp)
+library(ggdist)
+library(stringr)
+df.scores %>%
+  pivot_longer(everything()) %>%
+  rename(item = name,
+         score = value) %>%
+ggplot(
+  data = .,
+  aes(x = score, y = item, group = item, fill = item)
+  ) +
+  stat_slab(
+    side = "right", show.legend = F,
+    scale = 2, # defines the height that a slab can reach
+    alpha = 0.9,
+    #position = position_dodge(width = .6), # distance between elements for dodging
+    aes(fill_ramp = after_stat(level), fill = item),
+        .width = c(.50, .75, 1)
+  ) +
+  scale_fill_ramp_discrete(from = "black", aesthetics = "fill_ramp") +
+  stat_summary(fun.data = "mean_cl_boot",show.legend = F, size = .4,
+               position = position_dodge2nudge(x=.05,width = .8)) +
+  scale_y_discrete(labels = ~ stringr::str_wrap(.x, width = 12)) +
+  theme_minimal() +
+  theme_rise() +
+  coord_cartesian(xlim = c(-4,4)) +
+  scale_fill_brewer(palette = "Dark2",
+                    guide = "none") +
+  labs(
+    title = "Mätvärden",
+    subtitle = "Värden längre till höger är bättre",
+    caption = "Svart punkt indikerar medelvärde. Det färgade fältet i mitten visar var 50% av respondenterna återfinns.",
+    y = "",
+    x = "Mätvärden"
+  )
+```
+
+## Referenser
