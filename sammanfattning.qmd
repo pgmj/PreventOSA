@@ -66,11 +66,11 @@ final.items <- read_csv("09_psyktry/finalItems.csv") %>%
 
 Övergripande målsättningar:
 
-1. Genomföra psykometriska analyser för att utvärdera i vilken grad enkätfrågorna i dess nuvarande form kan utgöra tillförlitliga mätningar av de olika OSA-områden som de avser att mäta. Resultaten av analyserna användes sedan för att identifiera den kombination av items som fungerade bäst och kunde ligga till grund för beräkning av mätvärden inom ett område/index. Dessa mätvärden är mycket mera robusta än enskilda frågor, och ett bättre underlag för jämförelser över tid eller mellan grupper.
+1. Genomföra psykometriska analyser för att utvärdera i vilken grad enkätfrågorna i dess nuvarande form kan utgöra tillförlitliga mätningar av de olika OSA-områden som de avser att mäta. Resultaten av analyserna användes sedan för att identifiera den kombination av items som fungerade bäst och kunde ligga till grund för beräkning av mätvärden inom ett område/index ("indexvärde"). Dessa mätvärden är betydligt mer tillförlitliga än enskilda frågor och utgör ett bättre underlag för jämförelser över tid eller mellan grupper.
 
 2. Utforska om nya kombinationer av items från olika områden kunde sättas samman med lika bra eller bättre mätegenskaper. Detta gjordes utifrån både kvalitativa resonemang om vilka items som kunde antas mäta samma underliggande fenomen (oberoende den initiala kategoriseringen) och resultat från en konfirmatorisk faktoranalys  (korsladdningar och residualkorrelationer).
 
-3. Ge förslag på hur data från enkäten kan visualiseras på ett sätt som gör enkätresultaten lättillgängliga och användbara för slutanvändaren. Visualiseringsförslagen gavs både för mätvärden inom ett område (som förutsätter att psykometriska kriterier uppfylls) och för återgivning av svarsfördelningar på enskilda frågor. All visualisering bygger på att resultaten ska presenteras på gruppnivå.
+3. Ge förslag på hur data från enkäten kan visualiseras på ett sätt som gör enkätresultaten lättillgängliga och användbara för slutanvändaren. Visualiseringsförslagen gavs både för mätvärden inom ett område (som förutsätter att psykometriska kriterier uppfylls) och för återgivning av svarsfördelningar för enskilda frågor. All visualisering bygger på att resultaten ska presenteras på gruppnivå.
 
 ## Svarskategorier
 
@@ -102,7 +102,7 @@ För resterande sju områden användes följande sex svarsalternativ:
 
 ## Psykometriska kriterier {#sec-psykometriskaKriterier}
 
-RISE har tagit fram fem grundläggande kriterier och en rapporteringsmall för vetenskapliga psykometri-artiklar som har varit utgångspunkt för analysarbetet. Artikeln finns fritt tillgänglig som preprint [@johansson] och innehåller både en enklare och mera fördjupad beskrivning av kriterierna.
+RISE har tagit fram fem grundläggande psykometriska kriterier som har varit utgångspunkt för analysarbetet. Artikeln finns fritt tillgänglig som preprint [@johansson] och innehåller både en enklare och mera fördjupad beskrivning av kriterierna.
 
 Nedan finns en förenklad beskrivning av psykometriska kriterier som kommer från RISE rapport till MFoF om uppföljning av föräldraskapsstöd [@preuter2022]:
 
@@ -123,15 +123,15 @@ Nedan finns en förenklad beskrivning av psykometriska kriterier som kommer frå
 
 Inom varje område har samtliga frågor/items lagts in i en analys. Ambitionen har varit att ta fram ett index med så goda mätegenskaper som möjligt, och att eliminera items som varit  problematiska utifrån ovan nämnda psykometriska kriterier. 
 
-Rasch-analyser visade att sex av nio områden av organisatorisk och social arbetsmiljö uppfyllde de psykometriska kriterierna i tillräcklig grad och kan användas för att ta fram indexvärden. De sex områden som fungerade godkänt - efter exkludering av items som inte passade mätmodellen enligt ovan nämnda kriterier - var "Arbetsbelastning och krav", "Möjlighet att påverka", "Stöd", "Återhämtning", "Ledarskap" och "Psykologisk trygghet". *Resterande tre områden visade sig inte fungera lika bra och rekommenderas därför att revideras innan de kan användas för att ta fram indexvärden.* Frågor från samtliga områden kan presenteras i form av svarsfördelning på enskilda frågor.
+Rasch-analyser visade att sex av nio områden av organisatorisk och social arbetsmiljö uppfyllde de psykometriska kriterierna i tillräcklig grad och kan användas för att ta fram indexvärden. De sex områden som fungerade godkänt - efter exkludering av items som inte passade mätmodellen enligt ovan nämnda kriterier - var "Arbetsbelastning och krav", "Möjlighet att påverka", "Stöd", "Återhämtning", "Ledarskap" och "Psykologisk trygghet". **Resterande tre områden visade sig inte fungera lika bra och rekommenderas därför att revideras innan de kan användas för att ta fram indexvärden.** Frågor från samtliga områden kan presenteras i form av svarsfördelning på enskilda frågor.
 
 ## Noteringar om sammanfattningen av resultat
 
-I denna sammanfattning presenteras urvalet av items för respektive område som har visat sig bäst uppfylla de tidigare nämnda psykometriska kriterierna (markerade med grönt). *För de sex områden som uppvisade tillräckligt god psykometrisk kvalitet hänvisas också till reliabilitet och "targeting"* (dvs. hur väl frågorna matchar respondenterna), eftersom dessa faktorer är relevanta för användningen av frågorna och eventuella framtida reduktioner av items.
+I denna sammanfattning redovisas både samtliga items inom respektive område, och den sammansättning items som har visat sig fungera bäst utifrån psykometriska kriterierna. **Den optimala uppsättningen items är markerade med grönt.** För de sex områden som uppvisade tillräckligt god psykometrisk kvalitet länkas också till information om reliabilitet och "targeting" (hur väl frågorna matchar respondenterna), eftersom dessa faktorer är relevanta för användningen av frågorna.
 
 Ett vanligt problem i analyserna har varit residualkorrelationer. Det innebär att par av items är för lika varandra och inte enskilt medför tillräckligt mycket unik information till indexvärdet. I stället finns risk för att indexvärden skulle bli oproportionerligt påverkade om båda items behålls i indexet. I regel tas ett item bort, utifrån beaktande av varje items mätegenskaper.
 
-Detta dokument sammanfattar resultatet av varje indexområdes analysprocess. Analysdokument för respektive indexområde finns tillgängligt i menyn till vänster på denna sida. Den kompletta källkoden som visar hur analyserna gjorts finns tillgänglig [på denna webbsida](https://github.com/pgmj/PreventOSA). Eftersom även [anonyma rådata tillgängliggjorts](https://github.com/pgmj/PreventOSA/tree/main/data) är det möjligt att granska och reproducera våra analyser. All mjukvara som använts för analyserna bygger på öppen källkod och är fritt tillgängliga.
+Komplett dokumentation av psykometriska analyser för respektive indexområde finns tillgängligt i menyn till vänster på denna sida. Den kompletta källkoden som visar hur analyserna gjorts finns fritt tillgänglig [på GitHub](https://github.com/pgmj/PreventOSA). Eftersom även [anonyma rådata tillgängliggjorts](https://github.com/pgmj/PreventOSA/tree/main/data) är det möjligt att granska och reproducera våra analyser. All mjukvara som använts för analyserna bygger på öppen källkod och är fritt tillgängliga.
 
 ## Arbetets organisering
 
