@@ -1,4 +1,6 @@
-# Psychometric evaluation of a questionnaire for assessing social and organizational work environment
+# Psychometric evaluation of multiple questionnaires for assessing social and organizational work environment
+
+[![DOI](https://zenodo.org/badge/649686531.svg)](https://zenodo.org/badge/latestdoi/649686531)
 
 This work has been funded by [Prevent](https://prevent.se).
 
