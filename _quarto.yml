@@ -48,6 +48,7 @@ format:
     code-fold: true
     number-sections: true
     layout-align: left
+    page-layout: full
     logo: rise_logo_quarto.png
     mainfont: 'Lato'
     monofont: 'Roboto Mono'
