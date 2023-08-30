@@ -387,12 +387,12 @@ RIitemparams(df2)
 ## Transformeringstabell
 
 ```{r}
-RIscoreSE(df2)
+RIscoreSE(df2, width = 50, score_range = c(-4,5))
 ```
 
 ### Estimering av mätvärden
 ```{r}
-df2$score <- RIestThetas(df2)
+df2$score <- RIestThetas(df2, theta_range = c(-4,5))
 write.csv(df2, "scored.csv")
 summary(df2$score)
 ```
@@ -429,7 +429,7 @@ ggplot(
   ) +
   theme_minimal(base_family = "Lato") +
   theme_rise() +
-  coord_cartesian(xlim = c(-4,4)) +
+  coord_cartesian(xlim = c(-4,5)) +
   scale_color_viridis_d("Antal svar",
     begin = 0.2,
     aesthetics = c("fill", "color"),

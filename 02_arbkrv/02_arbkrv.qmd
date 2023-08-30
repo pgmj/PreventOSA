@@ -399,7 +399,7 @@ RIitemparams(df2)
 
 ## Transformeringstabell
 ```{r}
-RIscoreSE(df2)
+RIscoreSE(df2, width = 50, sdx = 7)
 ```
 
 ### Estimering av mätvärden

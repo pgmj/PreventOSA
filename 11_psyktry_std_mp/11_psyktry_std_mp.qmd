@@ -638,7 +638,7 @@ RIitemparams(df2)
 
 #### Ordinal -> interval
 ```{r}
-RIscoreSE(df2)
+RIscoreSE(df2, width = 50)
 ```
 
 ### Estimering av mätvärden
